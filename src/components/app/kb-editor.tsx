@@ -50,7 +50,10 @@ export function KBEditor({
     setSaving(true);
     const r = await updateKnowledgeFields({ projectId, fields: parsed });
     setSaving(false);
-    if (!r.ok) return toast.error(r.error.message);
+    if (!r.ok) {
+      toast.error(r.error.message);
+      return;
+    }
     setSavedAt(Date.now());
     toast.success(`${keys.length}개 항목을 채웠습니다.`);
   }
