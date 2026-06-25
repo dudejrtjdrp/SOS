@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "seed": "tsx supabase/seed.ts"
+    "seed": "tsx supabase/seed.ts",
+    "set-passwords": "tsx scripts/set-user-passwords.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.0",

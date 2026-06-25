@@ -24,6 +24,9 @@ yarn-error.log*
 .env
 .env*.local
 
+# local-only migration inputs (contain plaintext passwords)
+scripts/users.local.json
+
 # vercel
 .vercel
 
