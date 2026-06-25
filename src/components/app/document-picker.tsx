@@ -3,11 +3,13 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2Icon, SparklesIcon } from "lucide-react";
+import { Loader2Icon, SparklesIcon, CopyIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ModuleIcon } from "./module-icon";
 import { getDocGuide, KB_FIELD_LABEL } from "@/core/modules/guide";
+import { buildDocumentExternalPrompt } from "@/server/actions/document";
+import { AI_ENABLED } from "@/lib/flags";
 
 type DocType = { key: string; name: string; description: string | null };
 
@@ -42,6 +44,25 @@ export function DocumentPicker({
       router.push(`/p/${projectId}/documents/${json.documentId}`);
     } catch {
       toast.error("네트워크 오류가 발생했습니다.");
+    } finally {
+      setLoadingKey(null);
+    }
+  }
+
+  // AI-off path: copy the full document prompt to run in an external AI, then
+  // paste the result into 직접 조립 (manual composer) or save it as .md.
+  async function copyPrompt(docType: string) {
+    setLoadingKey(docType);
+    try {
+      const r = await buildDocumentExternalPrompt({ projectId, docType, language: "ko" });
+      if (!r.ok) {
+        toast.error(r.error.message ?? "프롬프트를 만들지 못했어요.");
+        return;
+      }
+      await navigator.clipboard.writeText(r.data.prompt);
+      toast.success("문서 프롬프트를 복사했어요. ChatGPT·Claude에 붙여넣어 작성한 뒤 ‘직접 조립’에 넣으세요.");
+    } catch {
+      toast.error("복사에 실패했어요. 다시 시도해 주세요.");
     } finally {
       setLoadingKey(null);
     }
@@ -117,24 +138,47 @@ export function DocumentPicker({
               </div>
             )}
 
-            <Button
-              onClick={() => generate(t.key)}
-              disabled={!!loadingKey}
-              className="mt-4 w-full"
-              size="sm"
-            >
-              {busy ? (
-                <>
-                  <Loader2Icon className="size-4 animate-spin" />
-                  생성 중…
-                </>
-              ) : (
-                <>
-                  <SparklesIcon className="size-4" />
-                  생성
-                </>
-              )}
-            </Button>
+            {AI_ENABLED ? (
+              <Button
+                onClick={() => generate(t.key)}
+                disabled={!!loadingKey}
+                className="mt-4 w-full"
+                size="sm"
+              >
+                {busy ? (
+                  <>
+                    <Loader2Icon className="size-4 animate-spin" />
+                    생성 중…
+                  </>
+                ) : (
+                  <>
+                    <SparklesIcon className="size-4" />
+                    생성
+                  </>
+                )}
+              </Button>
+            ) : (
+              <Button
+                onClick={() => copyPrompt(t.key)}
+                disabled={!!loadingKey}
+                variant="outline"
+                className="mt-4 w-full"
+                size="sm"
+                title="이 문서의 프롬프트를 복사해 ChatGPT·Claude에서 작성하세요"
+              >
+                {busy ? (
+                  <>
+                    <Loader2Icon className="size-4 animate-spin" />
+                    복사 중…
+                  </>
+                ) : (
+                  <>
+                    <CopyIcon className="size-4" />
+                    프롬프트 복사
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         );
       })}

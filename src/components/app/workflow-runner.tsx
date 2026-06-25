@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { buildExternalPrompt, submitExternalResult } from "@/server/actions/module";
 import { getGuide } from "@/core/modules/guide";
+import { AI_ENABLED } from "@/lib/flags";
 
 type Step = { key: string; label: string };
 type ChipDef = {
@@ -84,22 +85,27 @@ export function WorkflowRunner({
       st[k] = "running";
       setStatus({ ...st });
       let okStep = false;
-      try {
-        const res = await fetch("/api/runs", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ projectId, moduleId: id, inputs: {}, useRag: true }),
-        });
-        if (res.ok && res.body) {
-          const r = res.body.getReader();
-          while (true) {
-            const { done } = await r.read();
-            if (done) break;
+      // AI off: skip the LLM call and route every step through the same manual
+      // copy-prompt → paste-result flow (pauses below). AI on: try the call,
+      // fall back to manual only if it fails.
+      if (AI_ENABLED) {
+        try {
+          const res = await fetch("/api/runs", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ projectId, moduleId: id, inputs: {}, useRag: true }),
+          });
+          if (res.ok && res.body) {
+            const r = res.body.getReader();
+            while (true) {
+              const { done } = await r.read();
+              if (done) break;
+            }
+            okStep = true;
           }
-          okStep = true;
+        } catch {
+          okStep = false;
         }
-      } catch {
-        okStep = false;
       }
       if (!okStep) {
         st[k] = "manual";
@@ -120,6 +126,14 @@ export function WorkflowRunner({
       setActive(null);
       toast.success("분석 완료 — Project Memory에서 결과를 확인하세요.");
       router.push(`/p/${projectId}/memory`);
+      return;
+    }
+    // AI off: don't attempt one-click generation. The step results are saved —
+    // hand off to the manual composer to assemble the document without AI.
+    if (!AI_ENABLED) {
+      setActive(null);
+      toast.success("분석 단계를 마쳤어요 — ‘직접 조립’에서 문서를 완성하세요.");
+      router.push(`/p/${projectId}/documents/compose`);
       return;
     }
     const dk = `${preset.id}:doc`;
@@ -229,11 +243,14 @@ export function WorkflowRunner({
         <div className="space-y-3 rounded-xl border border-amber-500/40 bg-amber-500/5 p-5">
           <div className="flex items-center gap-2 text-sm font-medium">
             <TriangleAlertIcon className="size-4 text-amber-600 dark:text-amber-500" />
-            ‘{manual.label}’ 단계에서 AI 실행이 막혔어요 — 직접 돌려서 이어가기
+            {AI_ENABLED
+              ? `‘${manual.label}’ 단계에서 AI 실행이 막혔어요 — 직접 돌려서 이어가기`
+              : `‘${manual.label}’ 단계 — 외부 AI에서 실행해 이어가기`}
           </div>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            사용량 한도나 일시 오류일 수 있어요. ① 프롬프트 복사 → ② ChatGPT·Claude에서 실행 →
-            ③ 결과를 아래에 붙여넣으면, 저장 후 다음 단계로 자동으로 이어집니다.
+            {AI_ENABLED
+              ? "사용량 한도나 일시 오류일 수 있어요. ① 프롬프트 복사 → ② ChatGPT·Claude에서 실행 → ③ 결과를 아래에 붙여넣으면, 저장 후 다음 단계로 자동으로 이어집니다."
+              : "① 프롬프트 복사 → ② ChatGPT·Claude에서 실행 → ③ 결과를 아래에 붙여넣으면, 저장 후 다음 단계로 자동으로 이어집니다."}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={copyManualPrompt} disabled={copying}>

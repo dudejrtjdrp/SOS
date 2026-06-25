@@ -4,6 +4,8 @@ import { z } from "zod";
 import { getAuthContext } from "@/server/auth";
 import { ok, fail, type Result } from "@/lib/result";
 import { assembleDocumentMarkdown } from "@/core/documents/compose";
+import { formatDocumentPrompt, formatReviewPrompt } from "@/core/documents/export-prompt";
+import { KB_FIELD_LABEL } from "@/core/modules/guide";
 
 const SectionSchema = z.object({
   id: z.string(),
@@ -154,4 +156,115 @@ export async function composeManualDocument(input: {
   await sb.from("documents").update({ current_version_id: ver.id }).eq("id", doc.id);
 
   return ok({ documentId: doc.id, versionId: ver.id });
+}
+
+/**
+ * AI-free document path (copy side). Builds one copy-pasteable prompt that
+ * reproduces one-click generation for `docType` in an external AI: the doc
+ * module's system prompt + the project's non-empty Knowledge Base + the ordered
+ * section plan, formatted by formatDocumentPrompt(). The team runs it in
+ * ChatGPT/Claude, then pastes the markdown into 직접 조립 (manual composer) or
+ * saves it as .md. No LLM call here.
+ */
+export async function buildDocumentExternalPrompt(input: {
+  projectId: string;
+  docType: string;
+  language?: string;
+}): Promise<Result<{ prompt: string; docName: string }>> {
+  const parsed = z
+    .object({
+      projectId: z.string().uuid(),
+      docType: z.string().min(1),
+      language: z.string().optional(),
+    })
+    .safeParse(input);
+  if (!parsed.success) return fail("VALIDATION", "입력이 올바르지 않습니다.");
+
+  const ctx = await getAuthContext();
+  if (!ctx) return fail("UNAUTHENTICATED", "로그인이 필요합니다.");
+  const sb = ctx.supabase;
+
+  const { data: mod } = await sb
+    .from("modules")
+    .select("id, name")
+    .eq("key", parsed.data.docType)
+    .eq("category", "document")
+    .maybeSingle();
+  if (!mod) return fail("NOT_FOUND", "문서 종류를 찾을 수 없습니다.");
+
+  const { data: tpl } = await sb
+    .from("prompt_templates")
+    .select("current_version_id")
+    .eq("module_id", mod.id)
+    .maybeSingle();
+  if (!tpl?.current_version_id) return fail("NOT_FOUND", "문서 프롬프트를 찾을 수 없습니다.");
+
+  const { data: pv } = await sb
+    .from("prompt_versions")
+    .select("system_prompt, output_format")
+    .eq("id", tpl.current_version_id)
+    .maybeSingle();
+  if (!pv) return fail("NOT_FOUND", "문서 프롬프트 버전을 찾을 수 없습니다.");
+
+  const { data: kbRow } = await sb
+    .from("knowledge_bases")
+    .select("fields")
+    .eq("project_id", parsed.data.projectId)
+    .maybeSingle();
+  const kbFields = (kbRow?.fields ?? {}) as Record<string, unknown>;
+
+  const rawSections = ((pv.output_format as { sections?: unknown } | null)?.sections ??
+    []) as { title?: string; instruction?: string }[];
+  const sections = rawSections.map((s) => ({
+    title: s.title ?? "",
+    instruction: s.instruction ?? "",
+  }));
+
+  const kb = Object.entries(kbFields)
+    .filter(([, v]) => typeof v === "string" && v.trim() !== "")
+    .map(([k, v]) => ({ label: KB_FIELD_LABEL[k] ?? k, value: String(v).trim() }));
+
+  const prompt = formatDocumentPrompt({
+    docName: mod.name as string,
+    system: (pv.system_prompt as string) ?? "",
+    sections,
+    kb,
+    language: parsed.data.language ?? "ko",
+  });
+
+  return ok({ prompt, docName: mod.name as string });
+}
+
+/**
+ * AI-free review path (copy side). Builds a copy-pasteable multi-persona review
+ * prompt for a document's current version, to run in an external AI instead of
+ * the in-app reviewer. No LLM call.
+ */
+export async function buildReviewPrompt(input: {
+  documentId: string;
+}): Promise<Result<{ prompt: string; docName: string }>> {
+  const parsed = z.object({ documentId: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return fail("VALIDATION", "입력이 올바르지 않습니다.");
+
+  const ctx = await getAuthContext();
+  if (!ctx) return fail("UNAUTHENTICATED", "로그인이 필요합니다.");
+  const sb = ctx.supabase;
+
+  const { data: doc } = await sb
+    .from("documents")
+    .select("title, current_version_id")
+    .eq("id", parsed.data.documentId)
+    .maybeSingle();
+  if (!doc?.current_version_id) return fail("NOT_FOUND", "문서를 찾을 수 없습니다.");
+
+  const { data: ver } = await sb
+    .from("document_versions")
+    .select("body_md")
+    .eq("id", doc.current_version_id)
+    .maybeSingle();
+  const content = String(ver?.body_md ?? "").slice(0, 12000);
+  if (!content.trim()) return fail("NOT_FOUND", "리뷰할 문서 내용이 없습니다.");
+
+  const docName = (doc.title as string) ?? "문서";
+  return ok({ prompt: formatReviewPrompt({ docName, content }), docName });
 }

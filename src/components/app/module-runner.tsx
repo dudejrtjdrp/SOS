@@ -36,6 +36,7 @@ import { Viz, type PosLayout } from "./viz";
 import { getViz } from "@/core/viz/registry";
 import { ModuleIcon } from "./module-icon";
 import { getGuide, getFieldHelp, SETTING_KEYS } from "@/core/modules/guide";
+import { AI_ENABLED } from "@/lib/flags";
 
 type Source = { sourceType: string; sourceId: string; label: string; similarity: number };
 type Status = "idle" | "running" | "done" | "error";
@@ -227,6 +228,12 @@ export function ModuleRunner({
         toast.error(r.error.message ?? "결과 저장에 실패했어요.");
         return;
       }
+      // Don't show "saved" unless an artifact row actually exists — otherwise the
+      // result silently won't appear in KB/문서 조립 ("저장된 도구 결과가 없어요").
+      if (!r.data.artifactId) {
+        toast.error("결과가 저장되지 않았어요. DB 설정(마이그레이션 0008)을 확인하거나 다시 시도해 주세요.");
+        return;
+      }
       setSources([]);
       setResult(r.data.kind === "structured" ? r.data.content : { markdown: r.data.contentMd });
       setStreamText(r.data.kind === "structured" ? "" : r.data.contentMd);
@@ -353,27 +360,30 @@ export function ModuleRunner({
             </div>
           )}
           <div className="flex gap-2">
-            <Button onClick={run} disabled={status === "running"} className="flex-1">
-              {status === "running" ? (
-                <>
-                  <Loader2Icon className="size-4 animate-spin" />
-                  생성 중…
-                </>
-              ) : (
-                <>
-                  <PlayIcon className="size-4" />
-                  실행
-                </>
-              )}
-            </Button>
+            {AI_ENABLED && (
+              <Button onClick={run} disabled={status === "running"} className="flex-1">
+                {status === "running" ? (
+                  <>
+                    <Loader2Icon className="size-4 animate-spin" />
+                    생성 중…
+                  </>
+                ) : (
+                  <>
+                    <PlayIcon className="size-4" />
+                    실행
+                  </>
+                )}
+              </Button>
+            )}
             <Button
               type="button"
-              variant="outline"
+              variant={AI_ENABLED ? "outline" : "default"}
               onClick={copyPrompt}
               disabled={copying}
+              className={AI_ENABLED ? undefined : "flex-1"}
               title="이 도구의 프롬프트를 복사해 ChatGPT·Claude 등 외부 AI에서 사용하세요"
             >
-              <CopyIcon className="size-4" />
+              {copying ? <Loader2Icon className="size-4 animate-spin" /> : <CopyIcon className="size-4" />}
               프롬프트 복사
             </Button>
           </div>
@@ -472,8 +482,18 @@ export function ModuleRunner({
               )}
 
               <p className="border-t border-border pt-3 text-xs text-muted-foreground">
-                왼쪽 값을 확인하고 <span className="font-medium text-foreground">실행</span>을 누르세요.
-                Knowledge Base 값은 자동으로 채워집니다.
+                {AI_ENABLED ? (
+                  <>
+                    왼쪽 값을 확인하고 <span className="font-medium text-foreground">실행</span>을 누르세요.
+                    Knowledge Base 값은 자동으로 채워집니다.
+                  </>
+                ) : (
+                  <>
+                    왼쪽 값을 확인하고 <span className="font-medium text-foreground">프롬프트 복사</span>로
+                    ChatGPT·Claude에서 실행한 뒤, 결과를 <span className="font-medium text-foreground">붙여넣기</span>하세요.
+                    Knowledge Base 값은 자동으로 채워집니다.
+                  </>
+                )}
               </p>
             </div>
           )}
