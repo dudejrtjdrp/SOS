@@ -299,6 +299,27 @@ export async function getModuleIdsByKeys(keys: string[]) {
   return map;
 }
 
+/**
+ * Module IDs that already have at least one non-rejected artifact in this
+ * project. Used to auto-check workflow steps when AI is off — a tool counts as
+ * "done" once its result is saved (mirrors the non-rejected filter used by the
+ * manual document composer).
+ */
+export async function getCompletedModuleIds(projectId: string): Promise<string[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("artifacts")
+    .select("module_id")
+    .eq("project_id", projectId)
+    .neq("verification_status", "rejected");
+  const ids = new Set<string>();
+  (data ?? []).forEach((a) => {
+    const id = a.module_id as string | null;
+    if (id) ids.add(id);
+  });
+  return [...ids];
+}
+
 // ── Project Memory (Knowledge Graph) ──────────────────────────────
 export async function getMemory(projectId: string) {
   const supabase = await createClient();

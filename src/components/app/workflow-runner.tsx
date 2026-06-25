@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -52,10 +53,13 @@ export function WorkflowRunner({
   projectId,
   presets,
   idMap,
+  done: doneIds = [],
 }: {
   projectId: string;
   presets: Preset[];
   idMap: Record<string, string>;
+  /** Module IDs with a saved result — steps for these auto-check (AI-off mode). */
+  done?: string[];
 }) {
   const router = useRouter();
   const [active, setActive] = React.useState<string | null>(null);
@@ -64,6 +68,10 @@ export function WorkflowRunner({
   const [pasteText, setPasteText] = React.useState("");
   const [copying, setCopying] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+  // AI off: 실행 expands a preset into an in-place tool checklist instead of
+  // auto-running the LLM pipeline. Track which preset is open.
+  const [expanded, setExpanded] = React.useState<string | null>(null);
+  const doneSet = React.useMemo(() => new Set(doneIds), [doneIds]);
 
   // Run steps from startIndex. If a step's AI call fails, pause (return done:false)
   // and surface a manual paste panel; submitManual() resumes from the next step.
@@ -288,13 +296,17 @@ export function WorkflowRunner({
             {presets
               .filter((p) => p.phase === phase)
               .map((p) => {
-                const chips: ChipDef[] = [
-                  ...p.steps.map((s) => ({
-                    key: `${p.id}:${s.key}`,
-                    label: s.label,
-                    title: getGuide(s.key).tagline || s.label,
-                    kind: "step" as const,
-                  })),
+                const chips: (ChipDef & { done?: boolean })[] = [
+                  ...p.steps.map((s) => {
+                    const id = idMap[s.key];
+                    return {
+                      key: `${p.id}:${s.key}`,
+                      label: s.label,
+                      title: getGuide(s.key).tagline || s.label,
+                      kind: "step" as const,
+                      done: !AI_ENABLED && !!id && doneSet.has(id),
+                    };
+                  }),
                   p.doc
                     ? {
                         key: `${p.id}:doc`,
@@ -309,6 +321,8 @@ export function WorkflowRunner({
                         kind: "memory" as const,
                       },
                 ];
+                const isOpen = expanded === p.id;
+                const doneCount = chips.filter((c) => c.kind === "step" && c.done).length;
                 return (
                   <div key={p.id} className="rounded-xl border border-border bg-card p-5">
                     <div className="flex items-center gap-3">
@@ -316,32 +330,157 @@ export function WorkflowRunner({
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{p.name}</span>
                           <Badge doc={!!p.doc} count={p.steps.length} />
+                          {!AI_ENABLED && doneCount > 0 && (
+                            <span className="text-[11px] font-medium text-muted-foreground">
+                              {doneCount}/{p.steps.length} 완료
+                            </span>
+                          )}
                         </div>
                         <div className="mt-0.5 text-xs text-muted-foreground">{p.desc}</div>
                       </div>
-                      <Button size="sm" onClick={() => start(p)} disabled={active !== null}>
-                        {active === p.id ? (
-                          <Loader2Icon className="size-4 animate-spin" />
-                        ) : (
+                      {AI_ENABLED ? (
+                        <Button size="sm" onClick={() => start(p)} disabled={active !== null}>
+                          {active === p.id ? (
+                            <Loader2Icon className="size-4 animate-spin" />
+                          ) : (
+                            <PlayIcon className="size-4" />
+                          )}
+                          실행
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant={isOpen ? "secondary" : "default"}
+                          onClick={() => setExpanded(isOpen ? null : p.id)}
+                        >
                           <PlayIcon className="size-4" />
-                        )}
-                        실행
-                      </Button>
+                          {isOpen ? "접기" : "실행"}
+                        </Button>
+                      )}
                     </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                      {chips.map((s, i) => (
-                        <React.Fragment key={s.key}>
-                          <StepChip label={s.label} title={s.title} state={status[s.key]} kind={s.kind} />
-                          {i < chips.length - 1 && <span className="text-muted-foreground">→</span>}
-                        </React.Fragment>
-                      ))}
-                    </div>
+                    {AI_ENABLED || !isOpen ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                        {chips.map((s, i) => (
+                          <React.Fragment key={s.key}>
+                            <StepChip
+                              label={s.label}
+                              title={s.title}
+                              state={AI_ENABLED ? status[s.key] : s.done ? "done" : undefined}
+                              kind={s.kind}
+                            />
+                            {i < chips.length - 1 && <span className="text-muted-foreground">→</span>}
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    ) : (
+                      <WorkflowChecklist
+                        projectId={projectId}
+                        preset={p}
+                        idMap={idMap}
+                        doneSet={doneSet}
+                      />
+                    )}
                   </div>
                 );
               })}
           </div>
         </section>
       ))}
+    </div>
+  );
+}
+
+/**
+ * AI-off mode: an in-place, ordered walkthrough of a preset's tools. Each step
+ * links to its tool page (/run/{moduleId}); a step auto-checks once it has a
+ * saved result. Terminal step routes to the manual document composer (doc
+ * pipelines) or Project Memory (analysis-only).
+ */
+function WorkflowChecklist({
+  projectId,
+  preset,
+  idMap,
+  doneSet,
+}: {
+  projectId: string;
+  preset: Preset;
+  idMap: Record<string, string>;
+  doneSet: Set<string>;
+}) {
+  return (
+    <div className="mt-4 space-y-2 border-t border-border pt-4">
+      <p className="text-xs text-muted-foreground">
+        각 도구를 눌러 분석을 직접 진행하세요. 결과를 저장한 도구는 자동으로 완료로 표시돼요.
+      </p>
+      <ol className="space-y-1.5">
+        {preset.steps.map((s, i) => {
+          const id = idMap[s.key];
+          const isDone = !!id && doneSet.has(id);
+          const guide = getGuide(s.key);
+          const body = (
+            <>
+              <span
+                className={`flex size-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-medium ${
+                  isDone
+                    ? "border-[var(--success)]/40 bg-[var(--success)]/10 text-[var(--success)]"
+                    : "border-border text-muted-foreground"
+                }`}
+              >
+                {isDone ? <CheckIcon className="size-3.5" /> : i + 1}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="text-sm font-medium text-foreground">{s.label}</span>
+                {guide.tagline && (
+                  <span className="ml-2 text-xs text-muted-foreground">{guide.tagline}</span>
+                )}
+              </span>
+              {id ? (
+                <span className="shrink-0 text-xs font-medium text-primary">
+                  {isDone ? "다시 열기" : "열기"} →
+                </span>
+              ) : (
+                <span className="shrink-0 text-xs text-muted-foreground">준비 중</span>
+              )}
+            </>
+          );
+          return (
+            <li key={s.key}>
+              {id ? (
+                <Link
+                  href={`/p/${projectId}/run/${id}`}
+                  className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2 transition-colors hover:border-primary"
+                >
+                  {body}
+                </Link>
+              ) : (
+                <div className="flex items-center gap-3 rounded-lg border border-dashed border-border px-3 py-2 opacity-70">
+                  {body}
+                </div>
+              )}
+            </li>
+          );
+        })}
+        <li>
+          <Link
+            href={preset.doc ? `/p/${projectId}/documents/compose` : `/p/${projectId}/memory`}
+            className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2 transition-colors hover:border-primary"
+          >
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground">
+              {preset.doc ? (
+                <FileTextIcon className="size-3.5" />
+              ) : (
+                <NetworkIcon className="size-3.5" />
+              )}
+            </span>
+            <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
+              {preset.doc ? `${preset.docLabel ?? "문서"} 직접 조립` : "Project Memory에서 결과 확인"}
+            </span>
+            <span className="shrink-0 text-xs font-medium text-primary">
+              {preset.doc ? "조립하기" : "열기"} →
+            </span>
+          </Link>
+        </li>
+      </ol>
     </div>
   );
 }

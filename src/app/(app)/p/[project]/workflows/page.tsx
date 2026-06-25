@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { DatabaseIcon } from "lucide-react";
-import { getModuleIdsByKeys, getKBFields } from "@/lib/queries";
+import { getModuleIdsByKeys, getKBFields, getCompletedModuleIds } from "@/lib/queries";
 import { kbCompleteness } from "@/core/schemas/kb";
 import { WorkflowRunner, type Preset } from "@/components/app/workflow-runner";
+import { AI_ENABLED } from "@/lib/flags";
 
 export const metadata = { title: "Workflows" };
 
@@ -171,9 +172,10 @@ export default async function WorkflowsPage({
 }) {
   const { project } = await params;
   const keys = [...new Set(PRESETS.flatMap((p) => p.steps.map((s) => s.key)))];
-  const [idMap, fields] = await Promise.all([
+  const [idMap, fields, doneIds] = await Promise.all([
     getModuleIdsByKeys(keys),
     getKBFields(project),
+    getCompletedModuleIds(project),
   ]);
   const completeness = kbCompleteness(fields);
 
@@ -182,8 +184,9 @@ export default async function WorkflowsPage({
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Workflows</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          여러 단계를 한 번에 실행하는 자동 파이프라인. 각 단계의 결과가 다음 단계와
-          마지막 문서까지 근거로 이어집니다.
+          {AI_ENABLED
+            ? "여러 단계를 한 번에 실행하는 자동 파이프라인. 각 단계의 결과가 다음 단계와 마지막 문서까지 근거로 이어집니다."
+            : "각 플로우의 도구를 순서대로 직접 진행하는 가이드예요. ‘실행’을 누르면 도구 목록이 펼쳐지고, 결과를 저장한 도구는 자동으로 완료 표시됩니다."}
         </p>
       </header>
 
@@ -202,14 +205,18 @@ export default async function WorkflowsPage({
             <div className="h-full rounded-full bg-primary" style={{ width: `${completeness}%` }} />
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground">
-            {completeness >= 80
-              ? "준비됐어요. 워크플로우는 Knowledge Base만으로 모든 단계를 실행합니다."
-              : "워크플로우는 입력 없이 Knowledge Base만으로 실행돼요. 비어 있으면 결과가 부실해지니 먼저 채우는 걸 권장합니다 →"}
+            {AI_ENABLED
+              ? completeness >= 80
+                ? "준비됐어요. 워크플로우는 Knowledge Base만으로 모든 단계를 실행합니다."
+                : "워크플로우는 입력 없이 Knowledge Base만으로 실행돼요. 비어 있으면 결과가 부실해지니 먼저 채우는 걸 권장합니다 →"
+              : completeness >= 80
+                ? "준비됐어요. 각 도구가 Knowledge Base 값을 입력으로 자동으로 불러옵니다."
+                : "각 도구는 Knowledge Base 값을 입력으로 자동으로 불러와요. 비어 있으면 결과가 부실해지니 먼저 채우는 걸 권장합니다 →"}
           </p>
         </div>
       </Link>
 
-      <WorkflowRunner projectId={project} presets={PRESETS} idMap={idMap} />
+      <WorkflowRunner projectId={project} presets={PRESETS} idMap={idMap} done={doneIds} />
     </div>
   );
 }
