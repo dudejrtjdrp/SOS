@@ -167,7 +167,7 @@ async function persist(
   contentMd: string | null,
   usage: unknown,
 ): Promise<string | null> {
-  const { data: art } = await o.supabase
+  const { data: art, error: artErr } = await o.supabase
     .from("artifacts")
     .insert({
       workspace_id: ctx.workspaceId,
@@ -186,6 +186,15 @@ async function persist(
     })
     .select("id")
     .single();
+  // A failed artifact insert must not look like a successful run. The error was
+  // previously dropped, so a manual paste reported "saved" while nothing persisted
+  // (and the composer then showed "no saved tool results"). The most common cause
+  // is the target DB missing the HITL columns from migration 0008
+  // (verification_status / verified_by / verified_at). Surface it so the run is
+  // marked failed and the UI shows the real reason instead of a false success.
+  if (artErr || !art) {
+    throw new Error(`artifact insert failed: ${artErr?.message ?? "no row returned"}`);
+  }
 
   const t = tokensOf(usage);
   await o.supabase
@@ -256,7 +265,11 @@ export async function streamRun(o: RunOptions) {
           await markFailed(o, runId, String(error ?? "no object"));
           return;
         }
-        await persist(o, ctx, runId, object, JSON.stringify(object, null, 2), usage);
+        try {
+          await persist(o, ctx, runId, object, JSON.stringify(object, null, 2), usage);
+        } catch (e) {
+          await markFailed(o, runId, e instanceof Error ? e.message : String(e));
+        }
       },
     });
     return { runId, response: result.toTextStreamResponse({ headers }) };
@@ -267,7 +280,11 @@ export async function streamRun(o: RunOptions) {
     messages: ctx.plan.messages as ModelMessage[],
     temperature: ctx.plan.temperature,
     onFinish: async ({ text, usage }) => {
-      await persist(o, ctx, runId, { markdown: text }, text, usage);
+      try {
+        await persist(o, ctx, runId, { markdown: text }, text, usage);
+      } catch (e) {
+        await markFailed(o, runId, e instanceof Error ? e.message : String(e));
+      }
     },
     onError: async ({ error }) => {
       await markFailed(o, runId, String(error));
