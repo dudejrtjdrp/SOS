@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+/* shadcn/ui dark-mode variant for Tailwind v4 */
+@custom-variant dark (&:is(.dark *));
+
+/* ─────────────────────────────────────────────────────────────
+   Design tokens (SOS) — see docs/06-ux-and-screens.md §4
+   Light = :root, Dark = .dark. Dark is the default (html.dark).
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --radius: 0.75rem;
+
+  --background: #ffffff;
+  --foreground: #0b0c0e;
+  --card: #ffffff;
+  --card-foreground: #0b0c0e;
+  --popover: #ffffff;
+  --popover-foreground: #0b0c0e;
+  --primary: #6e56cf;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f5f6;
+  --secondary-foreground: #0b0c0e;
+  --muted: #f4f5f6;
+  --muted-foreground: #5a6066;
+  --accent: #f1eefc;
+  --accent-foreground: #2a2266;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --success: #30a46c;
+  --warning: #f5a623;
+  --border: #e6e8eb;
+  --input: #e6e8eb;
+  --ring: #6e56cf;
+}
+
+.dark {
+  --background: #0b0c0e;
+  --foreground: #ecedee;
+  --card: #141518;
+  --card-foreground: #ecedee;
+  --popover: #1c1e22;
+  --popover-foreground: #ecedee;
+  --primary: #6e56cf;
+  --primary-foreground: #ffffff;
+  --secondary: #1c1e22;
+  --secondary-foreground: #ecedee;
+  --muted: #1c1e22;
+  --muted-foreground: #9ba1a8;
+  --accent: #211f33;
+  --accent-foreground: #d9d2ff;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --success: #30a46c;
+  --warning: #f5a623;
+  --border: #2a2d33;
+  --input: #2a2d33;
+  --ring: #6e56cf;
+}
+
+/* Map tokens to Tailwind's theme so utilities like bg-background work */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: "Pretendard Variable", "Pretendard", var(--font-inter),
+    system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* Always-visible focus ring (a11y, see docs/06 §6) */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
