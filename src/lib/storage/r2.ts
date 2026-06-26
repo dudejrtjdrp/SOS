@@ -47,6 +47,12 @@ export function r2Configured(): boolean {
   return cfg() !== null;
 }
 
+/** Names of the required R2 env vars that are currently unset (for diagnostics). */
+export function missingR2Vars(): string[] {
+  return (["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"] as const)
+    .filter((k) => !process.env[k]);
+}
+
 const sha256hex = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
 const hmac = (key: Buffer | string, data: string) => createHmac("sha256", key).update(data).digest();
 
