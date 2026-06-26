@@ -303,10 +303,14 @@ export async function getModuleForEdit(moduleId: string) {
 
 export async function getModuleIdsByKeys(keys: string[]) {
   const supabase = await createClient();
-  const { data } = await supabase.from("modules").select("id, key").in("key", keys);
+  const { data } = await supabase.from("modules").select("id, key, visibility").in("key", keys);
   const map: Record<string, string> = {};
   (data ?? []).forEach((m) => {
-    if (m.key) map[m.key] = m.id;
+    if (!m.key) return;
+    // A workspace fork of a system tool ("프롬프트 수정") shares its key. Keep
+    // workflow steps pointed at the canonical system tool: only set the mapping
+    // if it's empty or this row is the system one.
+    if (!map[m.key] || m.visibility === "system") map[m.key] = m.id;
   });
   return map;
 }
@@ -330,6 +334,50 @@ export async function getCompletedModuleIds(projectId: string): Promise<string[]
     if (id) ids.add(id);
   });
   return [...ids];
+}
+
+/**
+ * Map of module_id → number of saved (non-rejected) artifacts in this project.
+ * Used to show per-tool result indicators in the module galleries: a tool is
+ * "filled" once it has at least one result. Mirrors the non-rejected filter
+ * used by {@link getCompletedModuleIds} and the manual document composer.
+ */
+export async function getModuleResultCounts(
+  projectId: string,
+): Promise<Record<string, number>> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("artifacts")
+    .select("module_id")
+    .eq("project_id", projectId)
+    .neq("verification_status", "rejected");
+  const counts: Record<string, number> = {};
+  (data ?? []).forEach((a) => {
+    const id = a.module_id as string | null;
+    if (id) counts[id] = (counts[id] ?? 0) + 1;
+  });
+  return counts;
+}
+
+/**
+ * Saved (non-rejected) results for one tool in one project, newest first. Powers
+ * the "저장된 결과" panel on a tool's detail page so revisiting a tool shows its
+ * past outputs — and their visualizations — instead of a blank runner.
+ */
+export async function getModuleArtifacts(projectId: string, moduleId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("artifacts")
+    .select(
+      "id, kind, content, content_md, verification_status, founder_take, created_at, pinned",
+    )
+    .eq("project_id", projectId)
+    .eq("module_id", moduleId)
+    .neq("verification_status", "rejected")
+    .order("pinned", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(20);
+  return data ?? [];
 }
 
 // ── Project Memory (Knowledge Graph) ──────────────────────────────

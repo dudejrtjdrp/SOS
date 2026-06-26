@@ -46,6 +46,8 @@ export function formatExternalPrompt(i: {
   inputs: Record<string, unknown>;
   kb: Record<string, string>;
   outputFormat?: unknown;
+  /** When set, replaces the [출력 형식] body (used to force a tool's viz JSON shape). */
+  outputOverride?: string;
   examples?: unknown;
 }): string {
   const valueOf = (v: Variable): unknown => {
@@ -84,7 +86,9 @@ export function formatExternalPrompt(i: {
 
   const of = i.outputFormat as OutputFormat | null | undefined;
   lines.push("[출력 형식]");
-  if (of && typeof of === "object" && "fields" in of && of.fields) {
+  if (i.outputOverride) {
+    lines.push(i.outputOverride);
+  } else if (of && typeof of === "object" && "fields" in of && of.fields) {
     lines.push("아래 항목을 모두 채워 구조화된 형태로 작성하세요:");
     lines.push(...describeFields(of.fields, 0));
   } else {

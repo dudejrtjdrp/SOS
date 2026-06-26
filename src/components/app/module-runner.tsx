@@ -22,7 +22,7 @@ import type { Variable } from "@/core/schemas/variables";
 import type { VerificationStatus } from "@/types/db";
 import { createClient } from "@/lib/supabase/client";
 import { pinArtifact, rateArtifact, saveArtifactToKnowledge, saveArtifactViz, verifyArtifact } from "@/server/actions/artifact";
-import { buildExternalPrompt, submitExternalResult } from "@/server/actions/module";
+import { buildExternalPrompt, submitExternalResult, submitStructuredResult } from "@/server/actions/module";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,14 +32,47 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Markdown } from "@/components/ui/markdown";
 import { StructuredResult } from "./structured-result";
+import { VizSkeleton } from "./skeletons";
 import { Viz, type PosLayout } from "./viz";
+import { SavedResults, type SavedArtifact } from "./saved-results";
 import { getViz } from "@/core/viz/registry";
 import { ModuleIcon } from "./module-icon";
+import { EditPromptButton } from "./edit-prompt-button";
 import { getGuide, getFieldHelp, SETTING_KEYS } from "@/core/modules/guide";
 import { AI_ENABLED } from "@/lib/flags";
 
 type Source = { sourceType: string; sourceId: string; label: string; similarity: number };
 type Status = "idle" | "running" | "done" | "error";
+
+/** Pull a JSON object out of a pasted blob (handles ```json fences + prose). */
+function extractJson(text: string): Record<string, unknown> | null {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = (fenced ? fenced[1] : text).trim();
+  const s = body.indexOf("{");
+  const e = body.lastIndexOf("}");
+  if (s === -1 || e === -1 || e <= s) return null;
+  try {
+    const o = JSON.parse(body.slice(s, e + 1));
+    return o && typeof o === "object" && !Array.isArray(o) ? (o as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Split a pasted blob into document prose (markdown) and the visualization JSON. */
+function splitDocAndJson(text: string): { json: Record<string, unknown> | null; doc: string } {
+  const json = extractJson(text);
+  let doc = text;
+  const fence = text.match(/```(?:json)?\s*[\s\S]*?```/i);
+  if (fence) {
+    doc = text.replace(fence[0], "").trim();
+  } else if (json) {
+    const s = text.indexOf("{");
+    const e = text.lastIndexOf("}");
+    if (s !== -1 && e > s) doc = (text.slice(0, s) + text.slice(e + 1)).trim();
+  }
+  return { json, doc };
+}
 
 export function ModuleRunner({
   projectId,
@@ -50,6 +83,7 @@ export function ModuleRunner({
   variables,
   outputKind,
   kb,
+  saved = [],
 }: {
   projectId: string;
   moduleId: string;
@@ -59,6 +93,7 @@ export function ModuleRunner({
   variables: Variable[];
   outputKind: string;
   kb: Record<string, string>;
+  saved?: SavedArtifact[];
 }) {
   const initial = React.useMemo(() => {
     const o: Record<string, unknown> = {};
@@ -84,10 +119,12 @@ export function ModuleRunner({
   const [showPaste, setShowPaste] = React.useState(false);
   const [pasteText, setPasteText] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
-  const [isManual, setIsManual] = React.useState(false);
+  const [savedItems, setSavedItems] = React.useState<SavedArtifact[]>(saved);
+  const [highlightId, setHighlightId] = React.useState<string | null>(null);
   const [resolveError, setResolveError] = React.useState<null | "failed" | "timeout">(null);
   const [lastRunId, setLastRunId] = React.useState<string | null>(null);
   const [vizMode, setVizMode] = React.useState(true);
+  const [docMd, setDocMd] = React.useState<string | null>(null);
   const [vizIdx, setVizIdx] = React.useState(0);
   const [vizLayouts, setVizLayouts] = React.useState<Record<string, PosLayout>>({});
   const vizSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -137,11 +174,11 @@ export function ModuleRunner({
     setStatus("running");
     setStreamText("");
     setResult(null);
+    setDocMd(null);
     setArtifactId(null);
     setSources([]);
     setVerification("ai_draft");
     setTake("");
-    setIsManual(false);
     setResolveError(null);
 
     let res: Response;
@@ -200,7 +237,7 @@ export function ModuleRunner({
   async function copyPrompt() {
     setCopying(true);
     try {
-      const r = await buildExternalPrompt({ projectId, moduleId, inputs });
+      const r = await buildExternalPrompt({ projectId, moduleId, moduleKey, inputs });
       if (!r.ok) {
         toast.error(r.error.message ?? "프롬프트를 만들지 못했어요.");
         return;
@@ -215,7 +252,9 @@ export function ModuleRunner({
   }
 
   // Manual fallback: paste a result produced in an external AI. It persists via
-  // submitExternalResult and lands in the same done → verification → KB/문서 flow.
+  // submitStructuredResult / submitExternalResult, then drops into the "저장된 결과"
+  // list — the same place AI results live — instead of the document-generation panel,
+  // which felt out of place for content the user supplied themselves.
   async function submitPaste() {
     if (!pasteText.trim()) {
       toast.error("결과를 붙여넣어 주세요.");
@@ -223,29 +262,70 @@ export function ModuleRunner({
     }
     setSubmitting(true);
     try {
-      const r = await submitExternalResult({ projectId, moduleId, inputs, text: pasteText });
-      if (!r.ok) {
-        toast.error(r.error.message ?? "결과 저장에 실패했어요.");
-        return;
+      const now = new Date().toISOString();
+      let item: SavedArtifact | null = null;
+
+      // 시각화 도구: 붙여넣은 JSON 결과를 추출해 바로 도식으로 저장.
+      if (vizDefs.length > 0) {
+        const { json, doc } = splitDocAndJson(pasteText);
+        if (json) {
+          const rs = await submitStructuredResult({
+            projectId,
+            moduleId,
+            content: json,
+            contentMd: doc || undefined,
+          });
+          if (!rs.ok) {
+            toast.error(rs.error.message ?? "결과 저장에 실패했어요.");
+            return;
+          }
+          item = {
+            id: rs.data.artifactId,
+            content: json,
+            contentMd: doc || null,
+            status: "human_verified",
+            founderTake: null,
+            createdAt: now,
+            pinned: false,
+          };
+          toast.success(
+            doc ? "문서와 도식을 함께 저장했어요." : "붙여넣은 결과를 도식으로 저장했어요.",
+          );
+        }
+        // JSON을 찾지 못하면 아래 일반 텍스트 저장으로 진행합니다.
       }
-      // Don't show "saved" unless an artifact row actually exists — otherwise the
-      // result silently won't appear in KB/문서 조립 ("저장된 도구 결과가 없어요").
-      if (!r.data.artifactId) {
-        toast.error("결과가 저장되지 않았어요. DB 설정(마이그레이션 0008)을 확인하거나 다시 시도해 주세요.");
-        return;
+
+      if (!item) {
+        const r = await submitExternalResult({ projectId, moduleId, inputs, text: pasteText });
+        if (!r.ok) {
+          toast.error(r.error.message ?? "결과 저장에 실패했어요.");
+          return;
+        }
+        // Don't claim success unless an artifact row actually exists — otherwise the
+        // result silently won't appear in KB/문서 조립 ("저장된 도구 결과가 없어요").
+        if (!r.data.artifactId) {
+          toast.error("결과가 저장되지 않았어요. DB 설정(마이그레이션 0008)을 확인하거나 다시 시도해 주세요.");
+          return;
+        }
+        item = {
+          id: r.data.artifactId,
+          content: r.data.kind === "structured" ? r.data.content : { markdown: r.data.contentMd },
+          contentMd: r.data.kind === "structured" ? null : r.data.contentMd,
+          status: r.data.verification,
+          founderTake: null,
+          createdAt: now,
+          pinned: false,
+        };
+        toast.success("외부 결과를 저장했어요. 아래 ‘저장된 결과’에서 확인·수정할 수 있어요.");
       }
-      setSources([]);
-      setResult(r.data.kind === "structured" ? r.data.content : { markdown: r.data.contentMd });
-      setStreamText(r.data.kind === "structured" ? "" : r.data.contentMd);
-      setArtifactId(r.data.artifactId);
-      setVerification(r.data.verification);
-      setTake("");
-      setIsManual(true);
-      setResolveError(null);
-      setStatus("done");
+
+      // Land it at the top of 저장된 결과, expanded, and return to that view.
+      const created = item;
+      setSavedItems((prev) => [created, ...prev.filter((p) => p.id !== created.id)]);
+      setHighlightId(created.id);
+      setStatus("idle");
       setShowPaste(false);
       setPasteText("");
-      toast.success("외부 결과를 저장했어요. KB 저장·문서 생성에 바로 쓸 수 있어요.");
     } catch {
       toast.error("저장 중 오류가 발생했어요.");
     } finally {
@@ -336,9 +416,12 @@ export function ModuleRunner({
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">{moduleName}</h1>
-        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+      <header className="mb-6 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight">{moduleName}</h1>
+          {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+        </div>
+        <EditPromptButton projectId={projectId} moduleId={moduleId} className="shrink-0" />
       </header>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
@@ -402,8 +485,10 @@ export function ModuleRunner({
             {showPaste && (
               <div className="mt-2 space-y-2 rounded-lg border border-border bg-muted/30 p-3">
                 <p className="text-[11px] leading-snug text-muted-foreground">
-                  AI 한도·오류로 실행이 막혔다면, 위 ‘프롬프트 복사’로 ChatGPT·Claude에서 돌린
-                  결과를 그대로 붙여넣으세요. ‘외부 결과’로 저장되고, 별도 검증 없이 KB·문서에 바로 쓸 수 있어요.
+                  위 ‘프롬프트 복사’로 ChatGPT·Claude에서 돌린 결과를 그대로 붙여넣으세요.
+                  별도 검증 없이 KB·문서에 바로 쓸 수 있어요.
+                  {vizDefs.length > 0 &&
+                    " 이 도구는 복사된 프롬프트에 JSON 형식이 포함돼, 붙여넣으면 자동으로 도식으로 그려집니다."}
                 </p>
                 <Textarea
                   value={pasteText}
@@ -438,6 +523,17 @@ export function ModuleRunner({
 
         <div>
           {status === "idle" && (
+            <>
+            {savedItems.length > 0 && (
+              <div className="mb-5">
+                <SavedResults
+                  moduleKey={moduleKey}
+                  items={savedItems}
+                  onChange={setSavedItems}
+                  highlightId={highlightId}
+                />
+              </div>
+            )}
             <div className="space-y-5 rounded-xl border border-border bg-card p-6">
               <div className="flex items-start gap-3">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -496,8 +592,11 @@ export function ModuleRunner({
                 )}
               </p>
             </div>
+            </>
           )}
-          {status === "running" && outputKind === "structured" && <RunningSkeleton />}
+          {status === "running" &&
+            outputKind === "structured" &&
+            (vizDefs.length > 0 ? <VizSkeleton /> : <RunningSkeleton />)}
           {status === "running" && outputKind !== "structured" && (
             <div className="rounded-xl border border-border bg-card p-5">
               <Markdown>{streamText || "…"}</Markdown>
@@ -547,7 +646,7 @@ export function ModuleRunner({
                           onClick={() => setVizMode(false)}
                           className={`rounded px-2 py-1 ${!vizMode ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
                         >
-                          원본
+                          {docMd ? "문서" : "원본"}
                         </button>
                       </div>
                       {vizMode && vizDefs.length > 1 && (
@@ -579,6 +678,8 @@ export function ModuleRunner({
                           if (def) onVizLayout(def.id, l);
                         }}
                       />
+                    ) : docMd ? (
+                      <Markdown>{docMd}</Markdown>
                     ) : (
                       <StructuredResult content={result} />
                     )}
@@ -597,35 +698,20 @@ export function ModuleRunner({
                   ))}
                 </div>
               )}
-              {/* Manual (pasted/typed) results are the user's own input — no verify gate. */}
-              {isManual ? (
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/5 p-4 text-sm">
-                  <CheckIcon className="size-4 shrink-0 text-sky-600 dark:text-sky-400" />
-                  <span className="font-medium">외부 결과를 저장했어요</span>
-                  <span className="text-xs text-muted-foreground">
-                    별도 검증 없이 아래 ‘KB에 저장’·‘문서 생성’에 바로 쓸 수 있어요.
-                  </span>
-                </div>
-              ) : (
+              {/* Decision Gate: a human verifies the AI draft before it feeds KB / 문서. */}
               <div className="space-y-3 rounded-xl border border-border bg-card p-4">
                 <div className="flex items-center gap-2">
-                  <VerificationChip status={verification} manual={isManual} />
+                  <VerificationChip status={verification} />
                   <span className="text-sm font-medium">
                     {verification === "human_verified"
-                      ? isManual
-                        ? "확인을 완료했어요"
-                        : "검증을 완료했어요"
-                      : isManual
-                        ? "외부에서 가져온 결과예요"
-                        : "이 결과를 어떻게 할까요?"}
+                      ? "검증을 완료했어요"
+                      : "이 결과를 어떻게 할까요?"}
                   </span>
                 </div>
                 <p className="text-xs leading-relaxed text-muted-foreground">
                   {verification === "human_verified"
                     ? "이제 아래 ‘KB에 저장’으로 지식 베이스에 넣거나, ‘문서 생성’으로 다음 단계로 넘어갈 수 있어요."
-                    : isManual
-                      ? "외부 AI에서 직접 돌려 가져온 결과예요. 내용을 확인한 뒤 — 맞으면 ‘확인 완료’(→ KB 저장·문서 생성이 열려요), 더 다듬을 건 ‘수정 필요’, 쓰지 않을 건 ‘반려’를 누르세요."
-                      : "AI가 만든 초안이에요. 내용을 살펴본 뒤 — 맞으면 ‘검증 완료’(→ KB 저장·문서 생성이 열려요), 더 다듬을 거면 ‘수정 필요’, 쓰지 않을 거면 ‘반려’를 누르세요."}
+                    : "AI가 만든 초안이에요. 내용을 살펴본 뒤 — 맞으면 ‘검증 완료’(→ KB 저장·문서 생성이 열려요), 더 다듬을 거면 ‘수정 필요’, 쓰지 않을 거면 ‘반려’를 누르세요."}
                 </p>
 
                 <div className="space-y-1.5">
@@ -643,7 +729,7 @@ export function ModuleRunner({
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" onClick={() => decide("human_verified")} disabled={!artifactId}>
                     <ShieldCheckIcon className="size-4" />
-                    {isManual ? "확인 완료 · 다음 단계 열기" : "검증 완료 · 다음 단계 열기"}
+                    검증 완료 · 다음 단계 열기
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => decide("needs_review")} disabled={!artifactId}>
                     <TriangleAlertIcon className="size-4" />
@@ -687,7 +773,6 @@ export function ModuleRunner({
                     </p>
                   ))}
               </div>
-              )}
 
               {/* Secondary actions */}
               <div className="flex flex-wrap items-center gap-2">

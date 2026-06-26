@@ -380,3 +380,80 @@ export async function manualRun(args: {
     throw e;
   }
 }
+
+/** Serialize structured viz content → readable markdown for KB / documents. */
+function structuredToMarkdown(content: Record<string, unknown>): string {
+  const lines: string[] = [];
+  for (const [k, v] of Object.entries(content)) {
+    if (k.startsWith("__")) continue;
+    lines.push(`## ${k}`);
+    if (Array.isArray(v)) {
+      for (const it of v) {
+        if (it && typeof it === "object") {
+          lines.push(
+            `- ${Object.values(it as Record<string, unknown>)
+              .map((x) => (Array.isArray(x) ? x.join(", ") : String(x)))
+              .filter(Boolean)
+              .join(" — ")}`,
+          );
+        } else if (String(it).trim()) {
+          lines.push(`- ${String(it)}`);
+        }
+      }
+    } else if (v && typeof v === "object") {
+      for (const [sk, sv] of Object.entries(v as Record<string, unknown>)) {
+        const val = Array.isArray(sv) ? sv.join(", ") : String(sv ?? "");
+        if (val.trim()) lines.push(`- ${sk}: ${val}`);
+      }
+    } else if (v != null && String(v).trim()) {
+      lines.push(String(v));
+    }
+    lines.push("");
+  }
+  return lines.join("\n").trim();
+}
+
+/**
+ * Manual structured run: the user typed the data directly into the tool's
+ * visualization fields (no AI). Persist it as a human-verified artifact so it
+ * renders as a diagram and flows into the same KB / document path as any result.
+ */
+export async function manualStructuredRun(args: {
+  supabase: SupabaseClient;
+  userId: string;
+  projectId: string;
+  moduleId: string;
+  inputs: Record<string, unknown>;
+  content: Record<string, unknown>;
+  /** Document-format prose (markdown). Falls back to a serialization of content. */
+  contentMd?: string;
+}): Promise<{
+  runId: string;
+  artifactId: string | null;
+  verification: VerificationStatus;
+  content: unknown;
+  contentMd: string;
+}> {
+  const o: RunOptions = {
+    supabase: args.supabase,
+    userId: args.userId,
+    projectId: args.projectId,
+    moduleId: args.moduleId,
+    inputs: args.inputs,
+    useRag: false,
+    manual: true,
+  };
+  const ctx = await loadRunContext(o.supabase, o.projectId, o.moduleId, o.inputs, false);
+  const runId = await createRun(o, ctx);
+  try {
+    const contentMd =
+      args.contentMd && args.contentMd.trim()
+        ? args.contentMd
+        : structuredToMarkdown(args.content);
+    const artifactId = await persist(o, ctx, runId, args.content, contentMd, null);
+    return { runId, artifactId, verification: "human_verified", content: args.content, contentMd };
+  } catch (e) {
+    await markFailed(o, runId, e instanceof Error ? e.message : String(e));
+    throw e;
+  }
+}
