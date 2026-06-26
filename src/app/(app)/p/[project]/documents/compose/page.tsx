@@ -1,4 +1,4 @@
-import { getArtifactsForCompose, getModuleIdsByKeys } from "@/lib/queries";
+import { getArtifactsForCompose, getModuleIdsByKeys, getKBFields } from "@/lib/queries";
 import { documentModules } from "@/core/modules/seed/documents";
 import { ComposeWorkspace } from "@/components/app/compose-workspace";
 
@@ -25,6 +25,7 @@ export default async function ComposePage({
       title: s.title,
       instruction: s.instruction,
       moduleKey: s.module_key ?? null,
+      kbField: s.kb_field ?? null,
     })),
   }));
 
@@ -34,9 +35,10 @@ export default async function ComposePage({
     ),
   ];
 
-  const [artifacts, idMap] = await Promise.all([
+  const [artifacts, idMap, kbFields] = await Promise.all([
     getArtifactsForCompose(project),
     getModuleIdsByKeys(allKeys),
+    getKBFields(project),
   ]);
 
   return (
@@ -45,6 +47,7 @@ export default async function ComposePage({
       artifacts={artifacts}
       docTemplates={docTemplates}
       idMap={idMap}
+      kbFields={kbFields}
       initialDoc={initialDoc}
     />
   );

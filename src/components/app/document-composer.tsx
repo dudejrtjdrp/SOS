@@ -14,6 +14,7 @@ import {
   Loader2Icon,
   SaveIcon,
   CheckCircle2Icon,
+  DatabaseIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ import { Markdown } from "@/components/ui/markdown";
 import { Label } from "@/components/ui/label";
 import { composeManualDocument } from "@/server/actions/document";
 import { assembleDocumentMarkdown } from "@/core/documents/compose";
+import { KB_FIELD_LABEL } from "@/core/modules/guide";
 import type { ComposeArtifact } from "@/lib/queries";
 
 type Block = { id: string; title: string; body_md: string; sourceId?: string };
@@ -33,10 +35,13 @@ const newId = () => `b${Date.now()}_${_seq++}`;
 export function DocumentComposer({
   projectId,
   artifacts,
+  kbFields = {},
   embedded = false,
 }: {
   projectId: string;
   artifacts: ComposeArtifact[];
+  /** Knowledge Base fields (key → value), pulled in as blocks from the palette. */
+  kbFields?: Record<string, string>;
   /** When embedded in another page (e.g. 직접 조립 수동 모드), drop the outer page
    *  padding and the duplicate page heading. */
   embedded?: boolean;
@@ -53,8 +58,24 @@ export function DocumentComposer({
     [blocks],
   );
 
+  // Knowledge Base fields that actually have a value — offered in the palette
+  // so the user can pull project data into a block without retyping it.
+  const kbEntries = React.useMemo(
+    () =>
+      Object.keys(KB_FIELD_LABEL)
+        .map((key) => ({ key, label: KB_FIELD_LABEL[key], value: (kbFields[key] ?? "").trim() }))
+        .filter((e) => e.value !== ""),
+    [kbFields],
+  );
+
   function addArtifact(a: ComposeArtifact) {
     setBlocks((bs) => [...bs, { id: newId(), title: a.label, body_md: a.body, sourceId: a.id }]);
+  }
+  function addKBField(e: { key: string; label: string; value: string }) {
+    setBlocks((bs) => [
+      ...bs,
+      { id: newId(), title: e.label, body_md: e.value, sourceId: `kb:${e.key}` },
+    ]);
   }
   function addEmpty() {
     setBlocks((bs) => [...bs, { id: newId(), title: "새 섹션", body_md: "" }]);
@@ -150,8 +171,38 @@ export function DocumentComposer({
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr]">
-        {/* Palette — saved tool results to pull in */}
+        {/* Palette — Knowledge Base fields + saved tool results to pull in */}
         <aside className="space-y-3">
+          {kbEntries.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Knowledge Base
+              </p>
+              <div className="space-y-2">
+                {kbEntries.map((e) => (
+                  <button
+                    key={e.key}
+                    type="button"
+                    onClick={() => addKBField(e)}
+                    className="w-full rounded-lg border border-border bg-card p-2.5 text-left transition-colors hover:border-primary"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <DatabaseIcon className="size-3.5 shrink-0 text-sky-600 dark:text-sky-500" />
+                      <span className="truncate text-sm font-medium">{e.label}</span>
+                      {usedSources.has(`kb:${e.key}`) && (
+                        <Badge variant="secondary" className="ml-auto h-4 px-1.5 text-[10px] font-normal">
+                          추가됨
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                      {e.value.slice(0, 90)}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               도구 결과 불러오기

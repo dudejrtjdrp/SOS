@@ -13,6 +13,7 @@ import {
   WandSparklesIcon,
   FileTextIcon,
   PencilLineIcon,
+  DatabaseIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,7 +27,13 @@ import type { ComposeArtifact } from "@/lib/queries";
 interface DocTemplate {
   key: string;
   name: string;
-  sections: { key: string; title: string; instruction: string; moduleKey: string | null }[];
+  sections: {
+    key: string;
+    title: string;
+    instruction: string;
+    moduleKey: string | null;
+    kbField: string | null;
+  }[];
 }
 
 type DocSectionView = DocTemplate["sections"][number];
@@ -40,12 +47,14 @@ export function ComposeWorkspace({
   artifacts,
   docTemplates,
   idMap,
+  kbFields,
   initialDoc,
 }: {
   projectId: string;
   artifacts: ComposeArtifact[];
   docTemplates: DocTemplate[];
   idMap: Record<string, string>;
+  kbFields: Record<string, string>;
   initialDoc: string | null;
 }) {
   const validInitial = initialDoc && docTemplates.some((d) => d.key === initialDoc) ? initialDoc : null;
@@ -88,7 +97,7 @@ export function ComposeWorkspace({
           위에서 만들 문서를 선택하세요. 워크플로우 산출물(사업계획서·IR Deck·PRD 등) 또는 ‘수동 조립’을 고를 수 있어요.
         </div>
       ) : target === "__manual__" ? (
-        <ManualPanel projectId={projectId} artifacts={artifacts} />
+        <ManualPanel projectId={projectId} artifacts={artifacts} kbFields={kbFields} />
       ) : doc ? (
         <WorkflowPanel
           key={doc.key}
@@ -96,6 +105,7 @@ export function ComposeWorkspace({
           doc={doc}
           idMap={idMap}
           artifacts={artifacts}
+          kbFields={kbFields}
         />
       ) : null}
     </div>
@@ -108,11 +118,13 @@ function WorkflowPanel({
   doc,
   idMap,
   artifacts,
+  kbFields,
 }: {
   projectId: string;
   doc: DocTemplate;
   idMap: Record<string, string>;
   artifacts: ComposeArtifact[];
+  kbFields: Record<string, string>;
 }) {
   const router = useRouter();
   const [copying, setCopying] = React.useState(false);
@@ -130,10 +142,20 @@ function WorkflowPanel({
     return m;
   }, [artifacts]);
 
+  // A section can be prefilled from a saved tool result and/or a Knowledge Base
+  // field. Tool results are richer, so they win; KB is the fallback.
+  const kbValueOf = (sec: DocSectionView): string | undefined => {
+    const v = sec.kbField ? (kbFields[sec.kbField] ?? "").trim() : "";
+    return v || undefined;
+  };
+
   const withTool = doc.sections.filter((s) => s.moduleKey);
   const ready = withTool.filter((s) => artifactByKey.has(s.moduleKey as string)).length;
+  const kbReady = doc.sections.filter((s) => kbValueOf(s)).length;
   const filledCount = doc.sections.filter((s) => (bodies[s.key] ?? "").trim()).length;
-  const hasFillable = withTool.some((s) => artifactByKey.has(s.moduleKey as string));
+  const hasFillable = doc.sections.some(
+    (s) => (s.moduleKey && artifactByKey.has(s.moduleKey)) || kbValueOf(s),
+  );
 
   function fillFromTool(sec: DocSectionView) {
     const a = sec.moduleKey ? artifactByKey.get(sec.moduleKey) : undefined;
@@ -142,22 +164,36 @@ function WorkflowPanel({
     toast.success(`‘${sec.title}’에 도구 결과를 채웠어요.`);
   }
 
-  function fillAllFromTools() {
-    let n = 0;
+  function fillFromKB(sec: DocSectionView) {
+    const v = kbValueOf(sec);
+    if (!v) return;
+    setBody(sec.key, v);
+    toast.success(`‘${sec.title}’에 Knowledge Base 내용을 채웠어요.`);
+  }
+
+  function fillAll() {
+    let tool = 0;
+    let kb = 0;
     setBodies((prev) => {
       const next = { ...prev };
       for (const s of doc.sections) {
-        if (!s.moduleKey || (next[s.key] ?? "").trim()) continue;
-        const a = artifactByKey.get(s.moduleKey);
+        if ((next[s.key] ?? "").trim()) continue;
+        const a = s.moduleKey ? artifactByKey.get(s.moduleKey) : undefined;
         if (a) {
           next[s.key] = a.body;
-          n++;
+          tool++;
+          continue;
+        }
+        const v = kbValueOf(s);
+        if (v) {
+          next[s.key] = v;
+          kb++;
         }
       }
       return next;
     });
-    if (n === 0) toast.info("새로 채울 도구 결과가 없어요.");
-    else toast.success(`${n}개 섹션을 도구 결과로 채웠어요.`);
+    if (tool + kb === 0) toast.info("새로 채울 도구 결과나 KB 내용이 없어요.");
+    else toast.success(`${tool + kb}개 섹션을 채웠어요 (도구 ${tool} · KB ${kb}).`);
   }
 
   async function copyDocPrompt() {
@@ -203,12 +239,13 @@ function WorkflowPanel({
         <span className="text-xs text-muted-foreground">
           항목 {doc.sections.length}개 · 작성 {filledCount}/{doc.sections.length}
           {withTool.length > 0 ? ` · 도구 결과 ${ready}/${withTool.length}` : ""}
+          {kbReady > 0 ? ` · KB ${kbReady}` : ""}
         </span>
         <div className="ml-auto flex items-center gap-2">
           {hasFillable && (
-            <Button variant="outline" size="sm" onClick={fillAllFromTools}>
+            <Button variant="outline" size="sm" onClick={fillAll}>
               <WandSparklesIcon className="size-4" />
-              도구 결과 모두 채우기
+              모두 채우기
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={copyDocPrompt} disabled={copying}>
@@ -228,6 +265,7 @@ function WorkflowPanel({
             const mk = s.moduleKey;
             const artifact = mk ? artifactByKey.get(mk) : undefined;
             const moduleId = mk ? idMap[mk] : undefined;
+            const kbValue = kbValueOf(s);
             const filled = (bodies[s.key] ?? "").trim().length > 0;
             return (
               <div key={s.key} className="rounded-xl border border-border bg-card p-3">
@@ -236,15 +274,20 @@ function WorkflowPanel({
                     {i + 1}
                   </span>
                   <span className="text-sm font-medium">{s.title}</span>
-                  {mk === null ? (
-                    <Badge variant="secondary" className="h-5 gap-1 px-1.5 text-[10px] font-normal">
-                      <PencilLineIcon className="size-3" />
-                      직접 작성
-                    </Badge>
-                  ) : artifact ? (
+                  {artifact ? (
                     <Badge className="h-5 gap-1 border-transparent bg-emerald-500/10 px-1.5 text-[10px] font-normal text-emerald-700 dark:text-emerald-400">
                       <CheckCircle2Icon className="size-3" />
                       도구 결과 있음
+                    </Badge>
+                  ) : kbValue ? (
+                    <Badge className="h-5 gap-1 border-transparent bg-sky-500/10 px-1.5 text-[10px] font-normal text-sky-700 dark:text-sky-400">
+                      <DatabaseIcon className="size-3" />
+                      KB 있음
+                    </Badge>
+                  ) : mk === null ? (
+                    <Badge variant="secondary" className="h-5 gap-1 px-1.5 text-[10px] font-normal">
+                      <PencilLineIcon className="size-3" />
+                      직접 작성
                     </Badge>
                   ) : (
                     <Badge className="h-5 gap-1 border-transparent bg-amber-500/10 px-1.5 text-[10px] font-normal text-amber-700 dark:text-amber-400">
@@ -267,6 +310,17 @@ function WorkflowPanel({
                         결과 채우기
                       </button>
                     )}
+                    {kbValue && (
+                      <button
+                        type="button"
+                        onClick={() => fillFromKB(s)}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                        title="Knowledge Base 내용을 이 칸에 채우기"
+                      >
+                        <DatabaseIcon className="size-3.5" />
+                        KB 채우기
+                      </button>
+                    )}
                     {moduleId && <ToolPromptButton projectId={projectId} moduleId={moduleId} />}
                     {moduleId && (
                       <Link
@@ -287,11 +341,13 @@ function WorkflowPanel({
                   value={bodies[s.key] ?? ""}
                   onChange={(e) => setBody(s.key, e.target.value)}
                   placeholder={
-                    mk === null
-                      ? `여기에 직접 작성하세요 — ${s.instruction}`
-                      : artifact
-                        ? "‘결과 채우기’로 도구 결과를 가져오거나 직접 작성하세요."
-                        : "도구를 실행해 결과를 만들거나 직접 작성하세요."
+                    artifact
+                      ? "‘결과 채우기’로 도구 결과를 가져오거나 직접 작성하세요."
+                      : kbValue
+                        ? "‘KB 채우기’로 지식 베이스 내용을 가져오거나 직접 작성하세요."
+                        : mk === null
+                          ? `여기에 직접 작성하세요 — ${s.instruction}`
+                          : "도구를 실행해 결과를 만들거나 직접 작성하세요."
                   }
                   className="mt-2 min-h-[120px] text-sm leading-relaxed"
                 />
@@ -401,9 +457,11 @@ function ToolPromptButton({ projectId, moduleId }: { projectId: string; moduleId
 function ManualPanel({
   projectId,
   artifacts,
+  kbFields,
 }: {
   projectId: string;
   artifacts: ComposeArtifact[];
+  kbFields: Record<string, string>;
 }) {
   const [copying, setCopying] = React.useState(false);
 
@@ -438,7 +496,7 @@ function ManualPanel({
       </div>
 
       {/* Reuse the existing hand-assembly composer (pick → reorder → edit → save). */}
-      <DocumentComposer projectId={projectId} artifacts={artifacts} embedded />
+      <DocumentComposer projectId={projectId} artifacts={artifacts} kbFields={kbFields} embedded />
     </div>
   );
 }

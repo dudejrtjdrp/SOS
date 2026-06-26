@@ -14,6 +14,9 @@ export interface DocSection {
   instruction: string;
   /** Optionally generate the section by running an existing analysis module. */
   module_key?: string;
+  /** Optionally prefill the section directly from a Knowledge Base field
+   *  (key in KB_FIELD_LABEL, e.g. "problem"). Used by 직접 조립's "KB 채우기". */
+  kb_field?: string;
 }
 
 /** Source-of-truth definition for a system module (seeded into the DB). */
