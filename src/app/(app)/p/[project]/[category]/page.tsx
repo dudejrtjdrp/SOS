@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getModulesByCategory } from "@/lib/queries";
+import { getModulesByCategory, getModuleResultCounts } from "@/lib/queries";
 import { getGuide } from "@/core/modules/guide";
+import { getViz } from "@/core/viz/registry";
 import { ModuleIcon } from "@/components/app/module-icon";
+import { ResultStatus } from "@/components/app/result-status";
 import { Badge } from "@/components/ui/badge";
 
 const TITLES: Record<string, { title: string; sub: string }> = {
@@ -20,7 +22,10 @@ export default async function CategoryPage({
   const { project, category } = await params;
   const meta = TITLES[category];
   if (!meta) notFound();
-  const modules = await getModulesByCategory(category);
+  const [modules, resultCounts] = await Promise.all([
+    getModulesByCategory(category),
+    getModuleResultCounts(project),
+  ]);
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-8">
@@ -34,6 +39,8 @@ export default async function CategoryPage({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {modules.map((m) => {
           const g = getGuide(m.key as string | null);
+          const count = resultCounts[m.id as string] ?? 0;
+          const canViz = getViz(m.key as string | null).length > 0;
           return (
             <Link
               key={m.id as string}
@@ -52,11 +59,17 @@ export default async function CategoryPage({
                         {m.visibility === "workspace" ? "팀" : "내 모듈"}
                       </Badge>
                     )}
+                    {canViz && (
+                      <Badge variant="outline" className="shrink-0 text-[10px] text-primary">
+                        시각화
+                      </Badge>
+                    )}
                   </div>
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">
                     {g.tagline || (m.description as string)}
                   </p>
                 </div>
+                <ResultStatus count={count} className="mt-0.5" />
               </div>
 
               {g.whenToUse && (

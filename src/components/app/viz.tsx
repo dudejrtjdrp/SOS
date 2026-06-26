@@ -301,9 +301,13 @@ function PositioningMap({
   const boxRef = React.useRef<HTMLDivElement>(null);
   const dragId = React.useRef<string | null>(null);
   const axesRef = React.useRef(axes);
+  const positionsRef = React.useRef(positions);
   React.useEffect(() => {
     axesRef.current = axes;
   }, [axes]);
+  React.useEffect(() => {
+    positionsRef.current = positions;
+  }, [positions]);
 
   function pointFromEvent(e: React.PointerEvent) {
     const box = boxRef.current;
@@ -313,11 +317,13 @@ function PositioningMap({
   }
 
   function setAxis(key: keyof PosAxes, value: string) {
-    setAxes((a) => {
-      const next = { ...a, [key]: value };
-      onChange?.({ positions, axes: next });
-      return next;
-    });
+    // Notify the parent from the event handler — NOT inside the setAxes updater.
+    // Updater functions run during render, so calling onChange (a ModuleRunner
+    // setState) there triggers "Cannot update ModuleRunner while rendering
+    // PositioningMap". positionsRef holds the latest committed positions.
+    const next = { ...axes, [key]: value };
+    setAxes(next);
+    onChange?.({ positions: positionsRef.current, axes: next });
   }
 
   return (
@@ -368,10 +374,11 @@ function PositioningMap({
                     if (dragId.current !== it.id) return;
                     dragId.current = null;
                     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
-                    setPositions((s) => {
-                      onChange?.({ positions: s, axes: axesRef.current });
-                      return s;
-                    });
+                    // Persist from the event handler using the latest positions
+                    // (tracked via positionsRef). Calling onChange inside a
+                    // setPositions updater runs during render and warns about
+                    // updating ModuleRunner while rendering PositioningMap.
+                    onChange?.({ positions: positionsRef.current, axes: axesRef.current });
                   }}
                   style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
                   className="absolute flex -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none items-center gap-1 active:cursor-grabbing"
