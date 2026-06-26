@@ -113,7 +113,11 @@ export function MarkdownEditor({
   className?: string;
 }) {
   const ref = React.useRef<HTMLTextAreaElement>(null);
-  const [mode, setMode] = React.useState<"write" | "preview">("write");
+  // Default to a rendered 미리보기 when there's already content (reading an
+  // existing note); start in write mode for an empty note so you can just type.
+  const [mode, setMode] = React.useState<"write" | "preview">(
+    value.trim() ? "preview" : "write",
+  );
 
   // "/" command-menu state
   const [slashAt, setSlashAt] = React.useState<number | null>(null);

@@ -273,7 +273,7 @@ export function NoteEditor({ note }: { note: NoteData }) {
             onChange={setBody}
             placeholder="내용을 입력하세요. ‘/’ 를 입력하면 제목·목록·표 등을 넣을 수 있어요."
             className="mt-1.5"
-            minHeight={220}
+            minHeight={440}
           />
         </div>
 
