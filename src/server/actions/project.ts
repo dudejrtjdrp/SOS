@@ -64,3 +64,33 @@ export async function renameProject(input: { projectId: string; name: string }):
   if (error) return fail("FORBIDDEN", error.message);
   return ok(undefined);
 }
+
+/** Restore an archived project back to the active list. */
+export async function unarchiveProject(input: { projectId: string }): Promise<Result> {
+  const ctx = await getAuthContext();
+  if (!ctx) return fail("UNAUTHENTICATED", "로그인이 필요합니다.");
+  const { error } = await ctx.supabase
+    .from("projects")
+    .update({ status: "active" })
+    .eq("id", input.projectId);
+  if (error) return fail("FORBIDDEN", error.message);
+  return ok(undefined);
+}
+
+/**
+ * Permanently delete a project. Every child table (knowledge, artifacts, runs,
+ * documents, …) references projects with `on delete cascade`, so this removes
+ * all associated data. RLS (projects_write = is_member) gates who can do it.
+ */
+export async function deleteProject(input: { projectId: string }): Promise<Result> {
+  const parsed = z.object({ projectId: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return fail("VALIDATION", "잘못된 요청입니다.");
+  const ctx = await getAuthContext();
+  if (!ctx) return fail("UNAUTHENTICATED", "로그인이 필요합니다.");
+  const { error } = await ctx.supabase
+    .from("projects")
+    .delete()
+    .eq("id", parsed.data.projectId);
+  if (error) return fail("FORBIDDEN", error.message);
+  return ok(undefined);
+}

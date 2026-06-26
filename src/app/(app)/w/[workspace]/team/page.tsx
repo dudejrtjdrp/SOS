@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeftIcon } from "lucide-react";
+import { getAuthContext } from "@/server/auth";
 import { getWorkspace, getTeam } from "@/lib/queries";
 import { TeamManager } from "@/components/app/team-manager";
+import { WorkspaceDanger } from "@/components/app/workspace-danger";
 
 export const metadata = { title: "팀" };
 
@@ -12,8 +14,15 @@ export default async function TeamPage({
   params: Promise<{ workspace: string }>;
 }) {
   const { workspace } = await params;
-  const [ws, team] = await Promise.all([getWorkspace(workspace), getTeam(workspace)]);
+  const [ctx, ws, team] = await Promise.all([
+    getAuthContext(),
+    getWorkspace(workspace),
+    getTeam(workspace),
+  ]);
   if (!ws) notFound();
+  const isOwner = team.members.some(
+    (m) => m.userId === ctx?.user.id && m.role === "owner",
+  );
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
@@ -25,6 +34,12 @@ export default async function TeamPage({
       </Link>
       <h1 className="mb-6 text-2xl font-semibold tracking-tight">{ws.name} · 팀</h1>
       <TeamManager workspaceId={workspace} members={team.members} invites={team.invites} />
+
+      {isOwner && (
+        <div className="mt-12">
+          <WorkspaceDanger workspaceId={workspace} workspaceName={ws.name} />
+        </div>
+      )}
     </div>
   );
 }

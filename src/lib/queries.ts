@@ -35,16 +35,19 @@ export async function getWorkspacesWithProjects() {
   const { data: projects } = ids.length
     ? await supabase
         .from("projects")
-        .select("id, name, description, workspace_id, updated_at")
+        .select("id, name, description, workspace_id, updated_at, status")
         .in("workspace_id", ids)
-        .eq("status", "active")
         .order("updated_at", { ascending: false })
     : { data: [] as Record<string, unknown>[] };
 
-  return workspaces.map((w) => ({
-    ...w,
-    projects: (projects ?? []).filter((p) => p.workspace_id === w.id),
-  }));
+  return workspaces.map((w) => {
+    const mine = (projects ?? []).filter((p) => p.workspace_id === w.id);
+    return {
+      ...w,
+      projects: mine.filter((p) => p.status === "active"),
+      archivedProjects: mine.filter((p) => p.status === "archived"),
+    };
+  });
 }
 
 export async function getProject(projectId: string) {

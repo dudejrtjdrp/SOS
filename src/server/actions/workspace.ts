@@ -81,3 +81,22 @@ export async function removeMember(input: { workspaceId: string; userId: string 
   if (error) return fail("FORBIDDEN", error.message);
   return ok(undefined);
 }
+
+/**
+ * Permanently delete a workspace and everything in it. All workspace-scoped
+ * tables reference workspaces with `on delete cascade`, so projects, knowledge,
+ * documents, members and invites are removed too. RLS (workspaces_delete =
+ * is_owner) ensures only an owner can do this.
+ */
+export async function deleteWorkspace(input: { workspaceId: string }): Promise<Result> {
+  const parsed = z.object({ workspaceId: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return fail("VALIDATION", "잘못된 요청입니다.");
+  const ctx = await getAuthContext();
+  if (!ctx) return fail("UNAUTHENTICATED", "로그인이 필요합니다.");
+  const { error } = await ctx.supabase
+    .from("workspaces")
+    .delete()
+    .eq("id", parsed.data.workspaceId);
+  if (error) return fail("FORBIDDEN", error.message);
+  return ok(undefined);
+}

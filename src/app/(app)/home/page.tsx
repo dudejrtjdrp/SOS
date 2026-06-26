@@ -4,6 +4,7 @@ import { getAuthContext } from "@/server/auth";
 import { getWorkspacesWithProjects } from "@/lib/queries";
 import { signOut } from "@/app/(app)/actions";
 import { CreateWorkspace, CreateProject } from "@/components/app/create";
+import { ProjectCard, ArchivedProjectRow } from "@/components/app/project-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ModeToggle } from "@/components/mode-toggle";
@@ -61,19 +62,37 @@ export default async function HomePage() {
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {ws.projects.map((p) => (
-                  <Link
+                  <ProjectCard
                     key={p.id as string}
-                    href={`/p/${p.id}`}
-                    className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary"
-                  >
-                    <div className="font-medium">{p.name as string}</div>
-                    <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                      {(p.description as string) || "설명 없음"}
-                    </div>
-                  </Link>
+                    project={{
+                      id: p.id as string,
+                      name: p.name as string,
+                      description: (p.description as string | null) ?? null,
+                    }}
+                  />
                 ))}
                 <CreateProject workspaceId={ws.id} />
               </div>
+
+              {ws.archivedProjects.length > 0 && (
+                <details className="mt-3 rounded-xl border border-border/60 bg-muted/20 px-4 py-2">
+                  <summary className="cursor-pointer select-none text-xs text-muted-foreground">
+                    보관됨 {ws.archivedProjects.length}
+                  </summary>
+                  <div className="mt-2 space-y-1.5">
+                    {ws.archivedProjects.map((p) => (
+                      <ArchivedProjectRow
+                        key={p.id as string}
+                        project={{
+                          id: p.id as string,
+                          name: p.name as string,
+                          description: (p.description as string | null) ?? null,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </details>
+              )}
             </section>
           ))
         )}
