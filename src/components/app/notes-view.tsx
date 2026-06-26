@@ -80,7 +80,7 @@ export function NotesView({
     <div className="mx-auto max-w-4xl px-6 py-8">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">문서함</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">노트</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             회의록·아이디어·리서치 등 정리한 내용을 자유롭게 적어두는 곳이에요. 저장하면 팀원 화면에도 바로 반영돼요.
           </p>
@@ -88,7 +88,7 @@ export function NotesView({
         <div className="relative">
           <Button size="sm" onClick={() => setPicking((v) => !v)} disabled={creating}>
             {creating ? <Loader2Icon className="size-4 animate-spin" /> : <PlusIcon className="size-4" />}
-            새 문서
+            새 노트
           </Button>
           {picking && (
             <>
@@ -144,8 +144,8 @@ export function NotesView({
       {visible.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
           {notes.length === 0
-            ? "아직 문서가 없어요. ‘새 문서’로 회의록이나 아이디어 노트를 만들어 보세요."
-            : "조건에 맞는 문서가 없어요."}
+            ? "아직 노트가 없어요. ‘새 노트’로 회의록이나 아이디어 노트를 만들어 보세요."
+            : "조건에 맞는 노트가 없어요."}
         </div>
       ) : (
         <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">

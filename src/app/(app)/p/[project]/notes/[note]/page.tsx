@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getNote } from "@/lib/queries";
 import { NoteEditor } from "@/components/app/note-editor";
 
-export const metadata = { title: "문서" };
+export const metadata = { title: "노트" };
 
 export default async function NotePage({
   params,

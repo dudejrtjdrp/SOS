@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   ArrowLeftIcon,
   SaveIcon,
+  CheckIcon,
   Trash2Icon,
   Loader2Icon,
   RefreshCwIcon,
@@ -21,6 +22,7 @@ import { getNoteType } from "@/core/notes/templates";
 import { updateNote, deleteNote } from "@/server/actions/note";
 import { useRealtimeRefresh } from "@/lib/realtime";
 import { NoteIcon } from "@/components/app/note-icon";
+import { MarkdownEditor } from "@/components/app/markdown-editor";
 import { cn } from "@/lib/utils";
 
 interface NoteData {
@@ -57,6 +59,7 @@ export function NoteEditor({ note }: { note: NoteData }) {
   const [tagDraft, setTagDraft] = React.useState("");
   const [pinned, setPinned] = React.useState(!!note.pinned);
   const [saving, setSaving] = React.useState(false);
+  const [justSaved, setJustSaved] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [confirmDel, setConfirmDel] = React.useState(false);
   const [remote, setRemote] = React.useState(false);
@@ -68,6 +71,11 @@ export function NoteEditor({ note }: { note: NoteData }) {
   const dirtyRef = React.useRef(dirty);
   dirtyRef.current = dirty;
   const lastUpdatedRef = React.useRef(note.updated_at);
+
+  // Revert the "저장됨" confirmation the moment the user edits again.
+  React.useEffect(() => {
+    if (dirty) setJustSaved(false);
+  }, [dirty]);
 
   // Reseed local state when the server sends a newer row (after router.refresh),
   // but only if we have no unsaved edits — otherwise warn instead of clobbering.
@@ -131,6 +139,7 @@ export function NoteEditor({ note }: { note: NoteData }) {
       seedRef.current = snapshot;
       lastUpdatedRef.current = r.data.updatedAt;
       setRemote(false);
+      setJustSaved(true);
       toast.success("저장했어요.");
       router.refresh();
     } catch {
@@ -165,7 +174,7 @@ export function NoteEditor({ note }: { note: NoteData }) {
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeftIcon className="size-4" />
-          문서함
+          노트
         </Link>
         <div className="flex items-center gap-2">
           <Button
@@ -178,8 +187,14 @@ export function NoteEditor({ note }: { note: NoteData }) {
             <PinIcon className={cn("size-4", pinned && "fill-current")} />
           </Button>
           <Button size="sm" onClick={save} disabled={saving || !dirty}>
-            {saving ? <Loader2Icon className="size-4 animate-spin" /> : <SaveIcon className="size-4" />}
-            저장
+            {saving ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : justSaved && !dirty ? (
+              <CheckIcon className="size-4" />
+            ) : (
+              <SaveIcon className="size-4" />
+            )}
+            {saving ? "저장 중" : justSaved && !dirty ? "저장됨" : "저장"}
           </Button>
         </div>
       </div>
@@ -187,7 +202,7 @@ export function NoteEditor({ note }: { note: NoteData }) {
       {remote && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm">
           <span className="text-amber-700 dark:text-amber-400">
-            다른 팀원이 이 문서를 수정했어요. 지금 불러오면 저장하지 않은 내 변경은 사라져요.
+            다른 팀원이 이 노트를 수정했어요. 지금 불러오면 저장하지 않은 내 변경은 사라져요.
           </span>
           <Button
             size="sm"
@@ -253,11 +268,12 @@ export function NoteEditor({ note }: { note: NoteData }) {
           <Label className="text-xs text-muted-foreground">
             {def.fields.length ? "메모" : "내용"}
           </Label>
-          <Textarea
+          <MarkdownEditor
             value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="자유롭게 작성하세요 (마크다운 지원)"
-            className="mt-1.5 min-h-[160px]"
+            onChange={setBody}
+            placeholder="내용을 입력하세요. ‘/’ 를 입력하면 제목·목록·표 등을 넣을 수 있어요."
+            className="mt-1.5"
+            minHeight={220}
           />
         </div>
 
@@ -298,7 +314,7 @@ export function NoteEditor({ note }: { note: NoteData }) {
       <div className="mt-10 border-t border-border pt-4">
         {confirmDel ? (
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">이 문서를 삭제할까요?</span>
+            <span className="text-muted-foreground">이 노트를 삭제할까요?</span>
             <Button size="sm" variant="destructive" onClick={onDelete} disabled={deleting}>
               {deleting ? <Loader2Icon className="size-4 animate-spin" /> : <Trash2Icon className="size-4" />}
               삭제
@@ -315,7 +331,7 @@ export function NoteEditor({ note }: { note: NoteData }) {
             className="text-muted-foreground hover:text-destructive"
           >
             <Trash2Icon className="size-4" />
-            문서 삭제
+            노트 삭제
           </Button>
         )}
       </div>
