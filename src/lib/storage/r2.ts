@@ -128,7 +128,7 @@ export async function putObject(
       "x-amz-date": amzDate,
       authorization,
     },
-    body: buf,
+    body: new Uint8Array(buf),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
