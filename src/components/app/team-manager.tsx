@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CopyIcon, UserPlusIcon, Trash2Icon } from "lucide-react";
+import { CopyIcon, UserPlusIcon, Trash2Icon, Loader2Icon } from "lucide-react";
 import { inviteMember, removeMember, updateMemberRole } from "@/server/actions/workspace";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,8 @@ export function TeamManager({
   const [role, setRole] = React.useState("member");
   const [loading, setLoading] = React.useState(false);
   const [link, setLink] = React.useState<string | null>(null);
+  // Which member row is mutating (remove or role change) — drives per-row spinner.
+  const [busyId, setBusyId] = React.useState<string | null>(null);
 
   async function invite() {
     if (!email.trim()) return;
@@ -42,14 +44,18 @@ export function TeamManager({
   }
 
   async function remove(userId: string) {
+    setBusyId(userId);
     const r = await removeMember({ workspaceId, userId });
+    setBusyId(null);
     if (!r.ok) return toast.error(r.error.message);
     toast.success("멤버를 제거했습니다.");
     router.refresh();
   }
 
   async function changeRole(userId: string, newRole: string) {
+    setBusyId(userId);
     const r = await updateMemberRole({ workspaceId, userId, role: newRole as "owner" | "member" });
+    setBusyId(null);
     if (!r.ok) return toast.error(r.error.message);
     router.refresh();
   }
@@ -69,12 +75,23 @@ export function TeamManager({
                 value={m.role}
                 onChange={(e) => changeRole(m.userId, e.target.value)}
                 className="w-28"
+                disabled={busyId === m.userId}
               >
                 <option value="owner">owner</option>
                 <option value="member">member</option>
               </Select>
-              <Button size="icon" variant="ghost" onClick={() => remove(m.userId)} aria-label="제거">
-                <Trash2Icon className="size-4" />
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => remove(m.userId)}
+                aria-label="제거"
+                disabled={busyId === m.userId}
+              >
+                {busyId === m.userId ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : (
+                  <Trash2Icon className="size-4" />
+                )}
               </Button>
             </div>
           ))}

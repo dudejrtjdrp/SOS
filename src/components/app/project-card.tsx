@@ -9,6 +9,7 @@ import {
   ArchiveIcon,
   Trash2Icon,
   RotateCcwIcon,
+  Loader2Icon,
 } from "lucide-react";
 import {
   archiveProject,
@@ -70,6 +71,7 @@ function DeleteProjectDialog({
             취소
           </Button>
           <Button variant="destructive" onClick={remove} disabled={busy}>
+            {busy && <Loader2Icon className="size-4 animate-spin" />}
             영구 삭제
           </Button>
         </DialogFooter>
@@ -144,6 +146,13 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
         onOpenChange={setConfirmDelete}
         onDeleted={() => router.refresh()}
       />
+
+      {/* Busy overlay — archive closes the menu, so signal progress on the card */}
+      {busy && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center rounded-xl bg-card/60 backdrop-blur-[1px]">
+          <Loader2Icon className="size-5 animate-spin text-muted-foreground" />
+        </div>
+      )}
     </div>
   );
 }
@@ -169,7 +178,12 @@ export function ArchivedProjectRow({ project }: { project: ProjectCardData }) {
         {project.name}
       </span>
       <Button size="sm" variant="ghost" onClick={restore} disabled={busy}>
-        <RotateCcwIcon className="size-3.5" /> 복구
+        {busy ? (
+          <Loader2Icon className="size-3.5 animate-spin" />
+        ) : (
+          <RotateCcwIcon className="size-3.5" />
+        )}{" "}
+        복구
       </Button>
       <Button
         size="sm"
