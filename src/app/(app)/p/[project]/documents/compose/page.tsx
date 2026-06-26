@@ -21,7 +21,9 @@ export default async function ComposePage({
     key: d.key,
     name: d.name,
     sections: (d.doc_sections ?? []).map((s) => ({
+      key: s.key,
       title: s.title,
+      instruction: s.instruction,
       moduleKey: s.module_key ?? null,
     })),
   }));

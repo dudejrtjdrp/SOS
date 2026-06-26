@@ -11,25 +11,25 @@ import {
   CheckCircle2Icon,
   CircleDashedIcon,
   WandSparklesIcon,
-  ArrowRightIcon,
   FileTextIcon,
   PencilLineIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { DocumentComposer } from "@/components/app/document-composer";
 import { buildComposePrompt, buildOrganizePrompt } from "@/server/actions/compose";
 import { buildExternalPrompt } from "@/server/actions/module";
 import { composeManualDocument } from "@/server/actions/document";
 import type { ComposeArtifact } from "@/lib/queries";
-import { cn } from "@/lib/utils";
 
 interface DocTemplate {
   key: string;
   name: string;
-  sections: { title: string; moduleKey: string | null }[];
+  sections: { key: string; title: string; instruction: string; moduleKey: string | null }[];
 }
+
+type DocSectionView = DocTemplate["sections"][number];
 
 async function copy(text: string) {
   await navigator.clipboard.writeText(text);
@@ -50,11 +50,6 @@ export function ComposeWorkspace({
 }) {
   const validInitial = initialDoc && docTemplates.some((d) => d.key === initialDoc) ? initialDoc : null;
   const [target, setTarget] = React.useState<string>(validInitial ?? "");
-
-  const artifactKeys = React.useMemo(
-    () => new Set(artifacts.map((a) => a.moduleKey).filter(Boolean) as string[]),
-    [artifacts],
-  );
 
   const doc = docTemplates.find((d) => d.key === target) ?? null;
 
@@ -96,10 +91,11 @@ export function ComposeWorkspace({
         <ManualPanel projectId={projectId} artifacts={artifacts} />
       ) : doc ? (
         <WorkflowPanel
+          key={doc.key}
           projectId={projectId}
           doc={doc}
           idMap={idMap}
-          artifactKeys={artifactKeys}
+          artifacts={artifacts}
         />
       ) : null}
     </div>
@@ -111,20 +107,58 @@ function WorkflowPanel({
   projectId,
   doc,
   idMap,
-  artifactKeys,
+  artifacts,
 }: {
   projectId: string;
   doc: DocTemplate;
   idMap: Record<string, string>;
-  artifactKeys: Set<string>;
+  artifacts: ComposeArtifact[];
 }) {
   const router = useRouter();
   const [copying, setCopying] = React.useState(false);
-  const [paste, setPaste] = React.useState("");
   const [saving, setSaving] = React.useState(false);
+  // Per-section body text, keyed by the section's stable key.
+  const [bodies, setBodies] = React.useState<Record<string, string>>({});
+  const setBody = (k: string, v: string) => setBodies((p) => ({ ...p, [k]: v }));
+
+  // Latest saved artifact per module key — used to prefill tool-backed sections.
+  const artifactByKey = React.useMemo(() => {
+    const m = new Map<string, ComposeArtifact>();
+    for (const a of artifacts) {
+      if (a.moduleKey && !m.has(a.moduleKey)) m.set(a.moduleKey, a);
+    }
+    return m;
+  }, [artifacts]);
 
   const withTool = doc.sections.filter((s) => s.moduleKey);
-  const missing = withTool.filter((s) => !artifactKeys.has(s.moduleKey as string));
+  const ready = withTool.filter((s) => artifactByKey.has(s.moduleKey as string)).length;
+  const filledCount = doc.sections.filter((s) => (bodies[s.key] ?? "").trim()).length;
+  const hasFillable = withTool.some((s) => artifactByKey.has(s.moduleKey as string));
+
+  function fillFromTool(sec: DocSectionView) {
+    const a = sec.moduleKey ? artifactByKey.get(sec.moduleKey) : undefined;
+    if (!a) return;
+    setBody(sec.key, a.body);
+    toast.success(`‘${sec.title}’에 도구 결과를 채웠어요.`);
+  }
+
+  function fillAllFromTools() {
+    let n = 0;
+    setBodies((prev) => {
+      const next = { ...prev };
+      for (const s of doc.sections) {
+        if (!s.moduleKey || (next[s.key] ?? "").trim()) continue;
+        const a = artifactByKey.get(s.moduleKey);
+        if (a) {
+          next[s.key] = a.body;
+          n++;
+        }
+      }
+      return next;
+    });
+    if (n === 0) toast.info("새로 채울 도구 결과가 없어요.");
+    else toast.success(`${n}개 섹션을 도구 결과로 채웠어요.`);
+  }
 
   async function copyDocPrompt() {
     setCopying(true);
@@ -140,13 +174,167 @@ function WorkflowPanel({
     }
   }
 
+  async function saveAssembled() {
+    const blocks = doc.sections
+      .map((s) => ({ title: s.title, body_md: (bodies[s.key] ?? "").trim() }))
+      .filter((b) => b.body_md);
+    if (blocks.length === 0) {
+      return toast.error("작성된 섹션이 없어요. 각 항목을 직접 작성하거나 도구 결과를 채워 주세요.");
+    }
+    setSaving(true);
+    try {
+      const r = await composeManualDocument({ projectId, title: doc.name, blocks });
+      if (!r.ok) return toast.error(r.error.message ?? "저장에 실패했어요.");
+      toast.success("문서를 저장했어요.");
+      router.push(`/p/${projectId}/documents/${r.data.documentId}`);
+    } catch {
+      toast.error("저장 중 오류가 발생했어요.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Doc header + actions */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-4">
+        <FileTextIcon className="size-4 text-muted-foreground" />
+        <span className="text-sm font-medium">{doc.name}</span>
+        <span className="text-xs text-muted-foreground">
+          항목 {doc.sections.length}개 · 작성 {filledCount}/{doc.sections.length}
+          {withTool.length > 0 ? ` · 도구 결과 ${ready}/${withTool.length}` : ""}
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          {hasFillable && (
+            <Button variant="outline" size="sm" onClick={fillAllFromTools}>
+              <WandSparklesIcon className="size-4" />
+              도구 결과 모두 채우기
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={copyDocPrompt} disabled={copying}>
+            {copying ? <Loader2Icon className="size-4 animate-spin" /> : <CopyIcon className="size-4" />}
+            문서 프롬프트 복사
+          </Button>
+        </div>
+      </div>
+
+      {/* Section editor — each item is described and directly writable */}
+      <div>
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          이 문서를 구성하는 항목
+        </p>
+        <div className="space-y-3">
+          {doc.sections.map((s, i) => {
+            const mk = s.moduleKey;
+            const artifact = mk ? artifactByKey.get(mk) : undefined;
+            const moduleId = mk ? idMap[mk] : undefined;
+            const filled = (bodies[s.key] ?? "").trim().length > 0;
+            return (
+              <div key={s.key} className="rounded-xl border border-border bg-card p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground">
+                    {i + 1}
+                  </span>
+                  <span className="text-sm font-medium">{s.title}</span>
+                  {mk === null ? (
+                    <Badge variant="secondary" className="h-5 gap-1 px-1.5 text-[10px] font-normal">
+                      <PencilLineIcon className="size-3" />
+                      직접 작성
+                    </Badge>
+                  ) : artifact ? (
+                    <Badge className="h-5 gap-1 border-transparent bg-emerald-500/10 px-1.5 text-[10px] font-normal text-emerald-700 dark:text-emerald-400">
+                      <CheckCircle2Icon className="size-3" />
+                      도구 결과 있음
+                    </Badge>
+                  ) : (
+                    <Badge className="h-5 gap-1 border-transparent bg-amber-500/10 px-1.5 text-[10px] font-normal text-amber-700 dark:text-amber-400">
+                      <CircleDashedIcon className="size-3" />
+                      결과 없음
+                    </Badge>
+                  )}
+                  {filled && (
+                    <CheckCircle2Icon className="size-3.5 text-emerald-600 dark:text-emerald-500" />
+                  )}
+                  <span className="ml-auto flex items-center gap-2">
+                    {artifact && (
+                      <button
+                        type="button"
+                        onClick={() => fillFromTool(s)}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                        title="저장된 도구 결과를 이 칸에 채우기"
+                      >
+                        <WandSparklesIcon className="size-3.5" />
+                        결과 채우기
+                      </button>
+                    )}
+                    {moduleId && <ToolPromptButton projectId={projectId} moduleId={moduleId} />}
+                    {moduleId && (
+                      <Link
+                        href={`/p/${projectId}/run/${moduleId}`}
+                        className="text-xs font-medium text-primary hover:underline"
+                      >
+                        도구 열기
+                      </Link>
+                    )}
+                  </span>
+                </div>
+
+                {/* What to write — guidance pulled from the template */}
+                <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{s.instruction}</p>
+
+                {/* The actual writing field */}
+                <Textarea
+                  value={bodies[s.key] ?? ""}
+                  onChange={(e) => setBody(s.key, e.target.value)}
+                  placeholder={
+                    mk === null
+                      ? `여기에 직접 작성하세요 — ${s.instruction}`
+                      : artifact
+                        ? "‘결과 채우기’로 도구 결과를 가져오거나 직접 작성하세요."
+                        : "도구를 실행해 결과를 만들거나 직접 작성하세요."
+                  }
+                  className="mt-2 min-h-[120px] text-sm leading-relaxed"
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Assemble + save */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+        <p className="text-xs text-muted-foreground">
+          작성한 섹션을 모아 하나의 문서로 저장해요. 비어 있는 섹션은 제외됩니다. AI 호출 없이 저장돼요.
+        </p>
+        <Button size="sm" onClick={saveAssembled} disabled={saving}>
+          {saving ? <Loader2Icon className="size-4 animate-spin" /> : <SaveIcon className="size-4" />}
+          문서로 저장 ({filledCount}/{doc.sections.length})
+        </Button>
+      </div>
+
+      {/* Alternative — paste a whole external-AI result in one go */}
+      <details className="rounded-xl border border-border bg-card p-4">
+        <summary className="cursor-pointer text-sm font-medium">
+          또는 — 외부 AI 전체 결과를 한 번에 붙여넣기
+        </summary>
+        <PasteWholeDoc projectId={projectId} docName={doc.name} />
+      </details>
+    </div>
+  );
+}
+
+function PasteWholeDoc({ projectId, docName }: { projectId: string; docName: string }) {
+  const router = useRouter();
+  const [paste, setPaste] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+
   async function savePasted() {
     if (!paste.trim()) return toast.error("외부 AI 결과를 붙여넣어 주세요.");
     setSaving(true);
     try {
       const r = await composeManualDocument({
         projectId,
-        title: doc.name,
+        title: docName,
         blocks: [{ title: "본문", body_md: paste.trim() }],
       });
       if (!r.ok) return toast.error(r.error.message ?? "저장에 실패했어요.");
@@ -160,122 +348,22 @@ function WorkflowPanel({
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-4">
-        <FileTextIcon className="size-4 text-muted-foreground" />
-        <span className="text-sm font-medium">{doc.name}</span>
-        <span className="text-xs text-muted-foreground">
-          항목 {withTool.length}개 · 결과 준비 {withTool.length - missing.length}/{withTool.length}
-        </span>
-        <Button size="sm" className="ml-auto" onClick={copyDocPrompt} disabled={copying}>
-          {copying ? <Loader2Icon className="size-4 animate-spin" /> : <WandSparklesIcon className="size-4" />}
-          문서 프롬프트 복사
+    <div className="mt-3">
+      <p className="text-xs text-muted-foreground">
+        '문서 프롬프트 복사'로 받은 프롬프트를 외부 AI에서 실행한 결과(마크다운)를 통째로 붙여넣어 저장해요.
+      </p>
+      <Textarea
+        value={paste}
+        onChange={(e) => setPaste(e.target.value)}
+        placeholder="외부 AI가 작성한 문서 본문 전체를 붙여넣기"
+        className="mt-2 min-h-[160px]"
+      />
+      <div className="mt-2 flex justify-end">
+        <Button variant="outline" size="sm" onClick={savePasted} disabled={saving}>
+          {saving ? <Loader2Icon className="size-4 animate-spin" /> : <SaveIcon className="size-4" />}
+          붙여넣은 결과로 저장
         </Button>
       </div>
-
-      {/* Items / sections */}
-      <div>
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          이 문서를 구성하는 항목
-        </p>
-        <ul className="space-y-1.5">
-          {doc.sections.map((s, i) => {
-            const mk = s.moduleKey;
-            const covered = mk ? artifactKeys.has(mk) : null;
-            const moduleId = mk ? idMap[mk] : undefined;
-            return (
-              <li
-                key={i}
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3 py-2"
-              >
-                {covered === true ? (
-                  <CheckCircle2Icon className="size-4 shrink-0 text-emerald-600 dark:text-emerald-500" />
-                ) : covered === false ? (
-                  <CircleDashedIcon className="size-4 shrink-0 text-amber-500" />
-                ) : (
-                  <PencilLineIcon className="size-4 shrink-0 text-muted-foreground" />
-                )}
-                <span className="text-sm">{s.title}</span>
-                {covered === false && (
-                  <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
-                    결과 없음
-                  </span>
-                )}
-                {mk === null && (
-                  <span className="text-[10px] text-muted-foreground">직접 작성</span>
-                )}
-                {moduleId && (
-                  <span className="ml-auto flex items-center gap-1.5">
-                    <ToolPromptButton projectId={projectId} moduleId={moduleId} />
-                    <Link
-                      href={`/p/${projectId}/run/${moduleId}`}
-                      className="text-xs font-medium text-primary hover:underline"
-                    >
-                      도구 열기
-                    </Link>
-                  </span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-
-      {/* Paste back → save */}
-      <div className="rounded-xl border border-border bg-card p-4">
-        <p className="text-sm font-medium">결과 붙여넣어 문서로 저장</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          복사한 프롬프트를 외부 AI에서 실행한 결과(마크다운)를 붙여넣고 저장하면 문서가 만들어져요.
-        </p>
-        <Textarea
-          value={paste}
-          onChange={(e) => setPaste(e.target.value)}
-          placeholder="외부 AI가 작성한 문서 본문을 붙여넣기"
-          className="mt-2 min-h-[160px]"
-        />
-        <div className="mt-2 flex justify-end">
-          <Button size="sm" onClick={savePasted} disabled={saving}>
-            {saving ? <Loader2Icon className="size-4 animate-spin" /> : <SaveIcon className="size-4" />}
-            문서로 저장
-          </Button>
-        </div>
-      </div>
-
-      {/* Missing items */}
-      {missing.length > 0 ? (
-        <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4">
-          <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
-            빠진 항목이 {missing.length}개 있어요
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            아래 도구의 결과가 아직 없어요. 먼저 실행해 두면 문서 품질이 올라가요.
-          </p>
-          <ul className="mt-2 space-y-1.5">
-            {missing.map((s, i) => {
-              const moduleId = idMap[s.moduleKey as string];
-              return (
-                <li key={i} className="flex items-center gap-2 text-sm">
-                  <CircleDashedIcon className="size-4 shrink-0 text-amber-500" />
-                  <span>{s.title}</span>
-                  {moduleId && (
-                    <Link
-                      href={`/p/${projectId}/run/${moduleId}`}
-                      className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                    >
-                      도구 실행 <ArrowRightIcon className="size-3.5" />
-                    </Link>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-[var(--success)]/40 bg-[var(--success)]/5 px-4 py-3 text-sm">
-          <CheckCircle2Icon className="mr-1.5 inline size-4 text-emerald-600 dark:text-emerald-500" />
-          모든 항목의 도구 결과가 준비됐어요.
-        </div>
-      )}
     </div>
   );
 }
