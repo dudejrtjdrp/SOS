@@ -151,3 +151,55 @@ export async function saveArtifactViz(input: {
   if (error) return fail("FORBIDDEN", error.message);
   return ok(undefined);
 }
+
+/** Edit a saved result in place. `content` replaces the structured payload (the
+ *  saved viz layout under `__viz` is preserved across the edit); `contentMd`
+ *  replaces the rendered/markdown body. Pass only what changed. */
+export async function updateArtifact(input: {
+  artifactId: string;
+  content?: Record<string, unknown>;
+  contentMd?: string | null;
+}): Promise<Result> {
+  const ctx = await getAuthContext();
+  if (!ctx) return fail("UNAUTHENTICATED", "로그인이 필요합니다.");
+
+  const patch: Record<string, unknown> = {};
+  if (input.content !== undefined) {
+    // Keep the drag-positioned viz layout (__viz) even if the editor sent it stripped.
+    const { data: art } = await ctx.supabase
+      .from("artifacts")
+      .select("content")
+      .eq("id", input.artifactId)
+      .single();
+    const prev =
+      art?.content && typeof art.content === "object" && !Array.isArray(art.content)
+        ? (art.content as Record<string, unknown>)
+        : {};
+    const next: Record<string, unknown> = { ...input.content };
+    if (prev.__viz !== undefined && next.__viz === undefined) next.__viz = prev.__viz;
+    patch.content = next;
+  }
+  if (input.contentMd !== undefined) patch.content_md = input.contentMd;
+  if (Object.keys(patch).length === 0) return ok(undefined);
+
+  const { error } = await ctx.supabase
+    .from("artifacts")
+    .update(patch)
+    .eq("id", input.artifactId);
+  if (error) return fail("FORBIDDEN", error.message);
+  return ok(undefined);
+}
+
+/** Hard-delete a saved result. FK-safe: `reviews` cascade and
+ *  `knowledge_entries.source_artifact_id` is set null, so a promoted KB entry
+ *  survives (it just loses the back-link). RLS limits this to workspace members. */
+export async function deleteArtifact(input: { artifactId: string }): Promise<Result> {
+  const ctx = await getAuthContext();
+  if (!ctx) return fail("UNAUTHENTICATED", "로그인이 필요합니다.");
+  const { error } = await ctx.supabase
+    .from("artifacts")
+    .delete()
+    .eq("id", input.artifactId);
+  if (error) return fail("FORBIDDEN", error.message);
+  return ok(undefined);
+}
