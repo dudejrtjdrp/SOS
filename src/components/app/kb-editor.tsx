@@ -8,6 +8,7 @@ import { KB_FIELDS, kbCompleteness } from "@/core/schemas/kb";
 import { docsUsingKBField } from "@/core/modules/guide";
 import { updateKnowledgeFields, addKnowledgeEntry } from "@/server/actions/knowledge";
 import { KBFormatTools } from "@/components/app/kb-format-tools";
+import { useRealtimeRefresh } from "@/lib/realtime";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -25,13 +26,33 @@ export function KBEditor({
   const [savedAt, setSavedAt] = React.useState<number | null>(null);
   const [openExample, setOpenExample] = React.useState<Record<string, boolean>>({});
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const router = useRouter();
+  const lastInitialRef = React.useRef(initial);
 
   const completeness = kbCompleteness(fields);
+
+  // Realtime: when a teammate saves the KB, the server sends a fresh `initial`
+  // (via router.refresh below). Adopt it — but not while a local field save is
+  // still pending (mid-typing), so we never clobber what's being entered.
+  React.useEffect(() => {
+    if (initial === lastInitialRef.current) return;
+    lastInitialRef.current = initial;
+    if (!timer.current) setFields(initial);
+  }, [initial]);
+
+  useRealtimeRefresh({
+    table: "knowledge_bases",
+    projectId,
+    onChange: () => router.refresh(),
+  });
 
   function onChange(key: string, value: string) {
     setFields((f) => ({ ...f, [key]: value }));
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => save(key, value), 800);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      save(key, value);
+    }, 800);
   }
 
   async function save(key: string, value: string) {

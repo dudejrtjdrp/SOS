@@ -9,6 +9,8 @@ import {
   CircleCheckIcon,
   ChartColumnIcon,
   FileTextIcon,
+  NotebookPenIcon,
+  MegaphoneIcon,
   WorkflowIcon,
   NetworkIcon,
   MessagesSquareIcon,
@@ -26,16 +28,18 @@ import { signOut } from "@/app/(app)/actions";
 type Item = { label: string; icon: LucideIcon; seg: string };
 
 const items: Item[] = [
-  { label: "Knowledge Base", icon: BookOpenIcon, seg: "knowledge" },
-  { label: "Idea Lab", icon: LightbulbIcon, seg: "idea" },
-  { label: "Research", icon: TelescopeIcon, seg: "research" },
-  { label: "Validation", icon: CircleCheckIcon, seg: "validation" },
-  { label: "Analysis", icon: ChartColumnIcon, seg: "analysis" },
-  { label: "Documents", icon: FileTextIcon, seg: "documents" },
-  { label: "Workflows", icon: WorkflowIcon, seg: "workflows" },
-  { label: "Project Memory", icon: NetworkIcon, seg: "memory" },
-  { label: "AI Chat", icon: MessagesSquareIcon, seg: "chat" },
-  { label: "Library", icon: LibraryIcon, seg: "library" },
+  { label: "지식 베이스", icon: BookOpenIcon, seg: "knowledge" },
+  { label: "공고문", icon: MegaphoneIcon, seg: "notices" },
+  { label: "아이디어", icon: LightbulbIcon, seg: "idea" },
+  { label: "리서치", icon: TelescopeIcon, seg: "research" },
+  { label: "검증", icon: CircleCheckIcon, seg: "validation" },
+  { label: "분석", icon: ChartColumnIcon, seg: "analysis" },
+  { label: "문서", icon: FileTextIcon, seg: "documents" },
+  { label: "문서함", icon: NotebookPenIcon, seg: "notes" },
+  { label: "워크플로우", icon: WorkflowIcon, seg: "workflows" },
+  { label: "프로젝트 메모리", icon: NetworkIcon, seg: "memory" },
+  { label: "AI 채팅", icon: MessagesSquareIcon, seg: "chat" },
+  { label: "프롬프트 라이브러리", icon: LibraryIcon, seg: "library" },
 ];
 
 /**

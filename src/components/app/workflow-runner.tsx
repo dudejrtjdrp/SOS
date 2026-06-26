@@ -141,7 +141,7 @@ export function WorkflowRunner({
     if (!AI_ENABLED) {
       setActive(null);
       toast.success("분석 단계를 마쳤어요 — ‘직접 조립’에서 문서를 완성하세요.");
-      router.push(`/p/${projectId}/documents/compose`);
+      router.push(`/p/${projectId}/documents/compose?doc=${preset.doc}`);
       return;
     }
     const dk = `${preset.id}:doc`;
@@ -170,7 +170,7 @@ export function WorkflowRunner({
     // Document generation blocked — analysis is already saved; hand off to the
     // manual composer so the user can assemble the document without AI.
     toast.error("문서 생성이 막혔어요(한도·오류). 분석 결과는 저장됐어요 — 수동 조립으로 이어가세요.");
-    router.push(`/p/${projectId}/documents/compose`);
+    router.push(`/p/${projectId}/documents/compose?doc=${preset.doc}`);
   }
 
   async function start(preset: Preset) {
@@ -462,7 +462,7 @@ function WorkflowChecklist({
         })}
         <li>
           <Link
-            href={preset.doc ? `/p/${projectId}/documents/compose` : `/p/${projectId}/memory`}
+            href={preset.doc ? `/p/${projectId}/documents/compose?doc=${preset.doc}` : `/p/${projectId}/memory`}
             className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2 transition-colors hover:border-primary"
           >
             <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground">

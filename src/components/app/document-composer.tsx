@@ -33,9 +33,13 @@ const newId = () => `b${Date.now()}_${_seq++}`;
 export function DocumentComposer({
   projectId,
   artifacts,
+  embedded = false,
 }: {
   projectId: string;
   artifacts: ComposeArtifact[];
+  /** When embedded in another page (e.g. 직접 조립 수동 모드), drop the outer page
+   *  padding and the duplicate page heading. */
+  embedded?: boolean;
 }) {
   const router = useRouter();
   const [title, setTitle] = React.useState("");
@@ -112,15 +116,17 @@ export function DocumentComposer({
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8">
+    <div className={embedded ? "" : "mx-auto max-w-6xl px-6 py-8"}>
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight">문서 직접 조립</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            도구에서 만든 결과를 골라 순서를 바꾸고 내용을 다듬어 문서로 만듭니다. AI 호출 없이 저장돼요.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+        {!embedded && (
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight">문서 직접 조립</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              도구에서 만든 결과를 골라 순서를 바꾸고 내용을 다듬어 문서로 만듭니다. AI 호출 없이 저장돼요.
+            </p>
+          </div>
+        )}
+        <div className="flex items-center gap-2 ml-auto">
           <Button variant="outline" size="sm" onClick={() => setPreview((v) => !v)}>
             {preview ? <PencilIcon className="size-4" /> : <EyeIcon className="size-4" />}
             {preview ? "편집" : "미리보기"}

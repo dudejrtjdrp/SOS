@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { saveDocumentVersion } from "@/server/actions/document";
 import { assembleDocumentMarkdown } from "@/core/documents/compose";
+import { useRealtimeRefresh } from "@/lib/realtime";
 import { Markdown } from "@/components/ui/markdown";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +54,20 @@ export function DocumentDetail({
   const [saving, setSaving] = React.useState(false);
   const [draftTitle, setDraftTitle] = React.useState(title);
   const [blocks, setBlocks] = React.useState<Block[]>([]);
+  const [remote, setRemote] = React.useState(false);
+  const editingRef = React.useRef(editing);
+  editingRef.current = editing;
+
+  // Realtime: a teammate saving a new version refreshes the read view live; if
+  // we're mid-edit, surface a banner instead of clobbering the draft.
+  useRealtimeRefresh({
+    table: "document_versions",
+    filter: `document_id=eq.${documentId}`,
+    onChange: () => {
+      if (editingRef.current) setRemote(true);
+      else router.refresh();
+    },
+  });
 
   /** Seed the editor from the latest server state every time we enter edit mode. */
   function seed(): Block[] {
@@ -178,6 +193,26 @@ export function DocumentDetail({
           </Button>
         </div>
       </header>
+
+      {remote && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm">
+          <span className="text-amber-700 dark:text-amber-400">
+            다른 팀원이 새 버전을 저장했어요. 편집을 마치고 저장하면 그 위에 새 버전으로 쌓여요.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto"
+            onClick={() => {
+              setEditing(false);
+              setRemote(false);
+              router.refresh();
+            }}
+          >
+            취소하고 최신본 보기
+          </Button>
+        </div>
+      )}
 
       <div className="mb-4">
         <Input

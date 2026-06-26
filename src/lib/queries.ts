@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { artifactToMarkdown } from "@/core/documents/compose";
+import { presignGetUrl } from "@/lib/storage/r2";
 import type { VerificationStatus } from "@/types/db";
 
 /** Normalize a Supabase nested relation that may come back as object or array. */
@@ -147,6 +148,8 @@ export async function getArtifact(artifactId: string) {
 export interface ComposeArtifact {
   id: string;
   label: string;
+  /** Module key that produced this artifact (for workflow/section coverage). */
+  moduleKey: string | null;
   kind: string;
   status: VerificationStatus;
   verified: boolean;
@@ -167,16 +170,17 @@ export async function getArtifactsForCompose(projectId: string): Promise<Compose
   const supabase = await createClient();
   const { data } = await supabase
     .from("artifacts")
-    .select("id, kind, content, content_md, verification_status, created_at, module:modules(name)")
+    .select("id, kind, content, content_md, verification_status, created_at, module:modules(name, key)")
     .eq("project_id", projectId)
     .neq("verification_status", "rejected")
     .order("created_at", { ascending: false })
     .limit(100);
   return (data ?? []).map((a) => {
-    const mod = one<{ name: string }>(a.module as never);
+    const mod = one<{ name: string; key: string | null }>(a.module as never);
     return {
       id: a.id as string,
       label: mod?.name ?? KIND_LABEL[a.kind as string] ?? "결과",
+      moduleKey: mod?.key ?? null,
       kind: a.kind as string,
       status: a.verification_status as VerificationStatus,
       verified: a.verification_status === "human_verified",
@@ -432,6 +436,46 @@ export async function getTeam(workspaceId: string) {
     })),
     invites: invites ?? [],
   };
+}
+
+// ── 문서함 (Notes) ────────────────────────────────────────────────
+export async function getNotes(projectId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("notes")
+    .select("id, note_type, title, tags, pinned, updated_at, created_at")
+    .eq("project_id", projectId)
+    .order("pinned", { ascending: false })
+    .order("updated_at", { ascending: false });
+  return data ?? [];
+}
+
+export async function getNote(noteId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("notes")
+    .select("id, project_id, note_type, title, fields, body_md, tags, pinned, updated_at")
+    .eq("id", noteId)
+    .maybeSingle();
+  return data;
+}
+
+// ── 공고문 (Notices) ──────────────────────────────────────────────
+export async function getNotices(projectId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("notices")
+    .select(
+      "id, project_id, title, kind, url, storage_key, file_name, mime_type, size_bytes, description, deadline, status, tags, pinned, created_at, updated_at",
+    )
+    .eq("project_id", projectId)
+    .order("pinned", { ascending: false })
+    .order("created_at", { ascending: false });
+  // Presign file/image keys so the browser can load them on a private bucket.
+  return (data ?? []).map((n) => ({
+    ...n,
+    fileUrl: n.storage_key ? presignGetUrl(n.storage_key as string) : null,
+  }));
 }
 
 // ── Chat context ──────────────────────────────────────────────────

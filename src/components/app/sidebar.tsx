@@ -31,22 +31,22 @@ const groups: { heading?: string; items: NavItem[] }[] = [
   {
     heading: "프로젝트",
     items: [
-      { label: "Knowledge Base", icon: BookOpenIcon, soon: "Phase 1" },
-      { label: "Idea Lab", icon: LightbulbIcon, soon: "Phase 2" },
-      { label: "Research", icon: TelescopeIcon, soon: "Phase 2" },
-      { label: "Validation", icon: CircleCheckIcon, soon: "Phase 2" },
-      { label: "Analysis", icon: ChartColumnIcon, soon: "Phase 1" },
-      { label: "Documents", icon: FileTextIcon, soon: "Phase 3" },
-      { label: "Workflows", icon: WorkflowIcon, soon: "Phase 5" },
-      { label: "Project Memory", icon: NetworkIcon, soon: "Phase 4" },
-      { label: "AI Chat", icon: MessagesSquareIcon, soon: "Phase 4" },
+      { label: "지식 베이스", icon: BookOpenIcon, soon: "Phase 1" },
+      { label: "아이디어", icon: LightbulbIcon, soon: "Phase 2" },
+      { label: "리서치", icon: TelescopeIcon, soon: "Phase 2" },
+      { label: "검증", icon: CircleCheckIcon, soon: "Phase 2" },
+      { label: "분석", icon: ChartColumnIcon, soon: "Phase 1" },
+      { label: "문서", icon: FileTextIcon, soon: "Phase 3" },
+      { label: "워크플로우", icon: WorkflowIcon, soon: "Phase 5" },
+      { label: "프로젝트 메모리", icon: NetworkIcon, soon: "Phase 4" },
+      { label: "AI 채팅", icon: MessagesSquareIcon, soon: "Phase 4" },
     ],
   },
   {
     heading: "워크스페이스",
     items: [
-      { label: "Library", icon: LibraryIcon, soon: "Phase 5" },
-      { label: "Settings", icon: SettingsIcon, soon: "Phase 0" },
+      { label: "프롬프트 라이브러리", icon: LibraryIcon, soon: "Phase 5" },
+      { label: "설정", icon: SettingsIcon, soon: "Phase 0" },
     ],
   },
 ];

@@ -3,8 +3,9 @@ import { FileTextIcon, DatabaseIcon, PencilLineIcon } from "lucide-react";
 import { getDocuments, getDocumentTypes, getKBFields } from "@/lib/queries";
 import { kbCompleteness } from "@/core/schemas/kb";
 import { DocumentPicker } from "@/components/app/document-picker";
+import { RealtimeRefresh } from "@/components/app/realtime-refresh";
 
-export const metadata = { title: "Documents" };
+export const metadata = { title: "문서" };
 
 export default async function DocumentsPage({
   params,
@@ -24,8 +25,9 @@ export default async function DocumentsPage({
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-8">
+      <RealtimeRefresh table="documents" projectId={project} />
       <header className="mb-5">
-        <h1 className="text-2xl font-semibold tracking-tight">Documents</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">문서</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           목적별 문서를 한 번에 생성합니다. 문서는 Knowledge Base와 그동안의 분석을 바탕으로 작성돼요.
         </p>
