@@ -11,9 +11,18 @@ function one<T>(v: T | T[] | null | undefined): T | null {
 
 export async function getWorkspacesWithProjects() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  // Scope to the current user's own memberships. The members_select RLS policy
+  // exposes every member row in a workspace you belong to (needed for the team
+  // page), so without this filter a workspace would appear once per member.
   const { data: members } = await supabase
     .from("workspace_members")
-    .select("role, workspace:workspaces(id, name, plan)");
+    .select("role, workspace:workspaces(id, name, plan)")
+    .eq("user_id", user.id);
 
   const workspaces = (members ?? []).map((m) => {
     const w = one<{ id: string; name: string; plan: string }>(
