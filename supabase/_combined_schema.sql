@@ -46,7 +46,8 @@ create table public.profiles (
 create trigger trg_profiles_updated before update on public.profiles
   for each row execute function public.set_updated_at();
 
--- Auto-create a profile row whenever a new auth user signs up.
+-- Auto-create a profile row whenever a new auth user signs up, and
+-- auto-join any workspaces this email was invited to (see 0010).
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -60,6 +61,20 @@ begin
     new.raw_user_meta_data->>'avatar_url'
   )
   on conflict (id) do nothing;
+
+  -- 이 이메일로 와 있던 대기 초대 → 멤버십으로 (가입 즉시 합류).
+  insert into public.workspace_members (workspace_id, user_id, role)
+    select i.workspace_id, new.id, i.role
+    from public.workspace_invites i
+    where lower(i.email) = lower(new.email)
+      and i.status = 'pending'
+  on conflict (workspace_id, user_id) do nothing;
+
+  update public.workspace_invites
+    set status = 'accepted'
+    where lower(email) = lower(new.email)
+      and status = 'pending';
+
   return new;
 end;
 $$;
@@ -173,6 +188,61 @@ begin
     on conflict (workspace_id, user_id) do nothing;
   update public.workspace_invites set status = 'accepted' where id = inv.id;
   return inv.workspace_id;
+end;
+$$;
+
+-- ── Add a member by email (instant, no link — see 0010) ─────────
+create or replace function public.add_member_by_email(
+  p_workspace_id uuid,
+  p_email        text,
+  p_role         text default 'member'
+)
+returns jsonb
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_email text := lower(trim(p_email));
+  v_role  text := coalesce(nullif(trim(p_role), ''), 'member');
+  v_uid   uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+  if not public.is_owner(p_workspace_id) then
+    raise exception 'forbidden: only owners can add members';
+  end if;
+  if v_email is null or v_email = '' then
+    raise exception 'email required';
+  end if;
+  if v_role not in ('owner', 'member') then
+    v_role := 'member';
+  end if;
+
+  select id into v_uid from auth.users where lower(email) = v_email limit 1;
+
+  if v_uid is not null then
+    insert into public.workspace_members (workspace_id, user_id, role)
+      values (p_workspace_id, v_uid, v_role)
+      on conflict (workspace_id, user_id) do nothing;
+    update public.workspace_invites
+      set status = 'accepted'
+      where workspace_id = p_workspace_id
+        and lower(email) = v_email
+        and status = 'pending';
+    return jsonb_build_object('status', 'added');
+  end if;
+
+  update public.workspace_invites
+    set role = v_role
+    where workspace_id = p_workspace_id
+      and lower(email) = v_email
+      and status = 'pending';
+  if not found then
+    insert into public.workspace_invites (workspace_id, email, role, invited_by)
+      values (p_workspace_id, v_email, v_role, auth.uid());
+  end if;
+  return jsonb_build_object('status', 'invited');
 end;
 $$;
 

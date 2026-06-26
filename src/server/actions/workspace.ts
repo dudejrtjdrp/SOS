@@ -15,6 +15,46 @@ export async function createWorkspace(input: { name: string }): Promise<Result<{
   return ok({ id: data as string });
 }
 
+/**
+ * Add a teammate by email — no invite link, no acceptance step.
+ *
+ * Calls the `add_member_by_email` RPC (security definer), which:
+ *   • email already has an SOS account → inserts into workspace_members
+ *     immediately (status "added") — they're a member right away.
+ *   • email not registered yet → stores a pending invite (status "invited");
+ *     the `handle_new_user` trigger auto-joins them the moment they sign up
+ *     with that email. Still no link to open.
+ */
+export async function addMember(input: {
+  workspaceId: string;
+  email: string;
+  role?: "owner" | "member";
+}): Promise<Result<{ status: "added" | "invited" }>> {
+  const parsed = z
+    .object({
+      workspaceId: z.string().uuid(),
+      email: z.string().email(),
+      role: z.enum(["owner", "member"]).default("member"),
+    })
+    .safeParse(input);
+  if (!parsed.success) return fail("VALIDATION", "이메일을 확인하세요.");
+  const ctx = await getAuthContext();
+  if (!ctx) return fail("UNAUTHENTICATED", "로그인이 필요합니다.");
+
+  const { data, error } = await ctx.supabase.rpc("add_member_by_email", {
+    p_workspace_id: parsed.data.workspaceId,
+    p_email: parsed.data.email,
+    p_role: parsed.data.role,
+  });
+  if (error) return fail("FORBIDDEN", error.message);
+  const status = (data as { status?: string })?.status === "added" ? "added" : "invited";
+  return ok({ status });
+}
+
+/**
+ * @deprecated 구버전 링크 호환용. 새 흐름은 addMember 를 쓴다.
+ * 이메일로 토큰 초대 행을 만들고 token 을 돌려준다(/join?token 링크 생성용).
+ */
 export async function inviteMember(input: {
   workspaceId: string;
   email: string;
