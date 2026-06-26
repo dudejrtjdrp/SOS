@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BookOpenIcon,
@@ -15,6 +15,7 @@ import {
   LibraryIcon,
   ChevronLeftIcon,
   LogOutIcon,
+  Loader2Icon,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,18 @@ const items: Item[] = [
   { label: "AI Chat", icon: MessagesSquareIcon, seg: "chat" },
   { label: "Library", icon: LibraryIcon, seg: "library" },
 ];
+
+/**
+ * Shows a spinner on the clicked nav item while its route is loading. Reads the
+ * pending state of the nearest parent <Link>, so feedback is immediate even
+ * when the destination is a slow dynamic route.
+ */
+function NavSpinner() {
+  const { pending } = useLinkStatus();
+  return pending ? (
+    <Loader2Icon className="ml-auto size-3.5 shrink-0 animate-spin opacity-70" />
+  ) : null;
+}
 
 export function ProjectSidebar({
   projectId,
@@ -82,6 +95,7 @@ export function ProjectSidebar({
             >
               <Icon className="size-4 shrink-0" />
               {item.label}
+              <NavSpinner />
             </Link>
           );
         })}

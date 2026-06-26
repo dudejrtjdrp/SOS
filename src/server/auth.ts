@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 
@@ -7,13 +8,30 @@ export interface AuthContext {
   user: User;
 }
 
-/** Returns the authed context or null if not signed in. */
-export async function getAuthContext(): Promise<AuthContext | null> {
+/**
+ * The signed-in user, validated against the Supabase auth server.
+ *
+ * `auth.getUser()` is a NETWORK round-trip, and without this it runs once per
+ * layout + page in the same render (middleware, (app) layout, project layout,
+ * page) — the dominant per-navigation latency. React `cache()` dedupes every
+ * call within a single request down to ONE network call.
+ */
+export const getCurrentUser = cache(async (): Promise<User | null> => {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  return user ? { supabase, user } : null;
+  return user;
+});
+
+/** Returns the authed context or null if not signed in. */
+export async function getAuthContext(): Promise<AuthContext | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  // createClient() only reads cookies + builds the client (no network), so this
+  // is cheap; the expensive getUser() above is cached per request.
+  const supabase = await createClient();
+  return { supabase, user };
 }
 
 /** Membership check used by actions/handlers (RLS is the real guard). */

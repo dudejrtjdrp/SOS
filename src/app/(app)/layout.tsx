@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/server/auth";
 import { CommandPalette } from "@/components/app/command-palette";
 
 export default async function AppLayout({
@@ -7,10 +7,9 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Cached per request — shares the same getUser() round-trip with the project
+  // layout and pages instead of issuing its own.
+  const user = await getCurrentUser();
 
   if (!user) redirect("/login");
 
