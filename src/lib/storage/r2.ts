@@ -28,17 +28,10 @@ interface R2Config {
 }
 
 function cfg(): R2Config | null {
-  // Tolerate a pasted scheme/endpoint in R2_ACCOUNT_ID (e.g. copying the full
-  // "https://<id>.r2.cloudflarestorage.com" S3 endpoint). Without this the host
-  // becomes "https://https://…" and fetch fails with ENOTFOUND "https".
-  const accountId = (process.env.R2_ACCOUNT_ID ?? "")
-    .trim()
-    .replace(/^https?:\/\//i, "")
-    .replace(/\/.*$/, "")
-    .replace(/\.r2\.cloudflarestorage\.com$/i, "");
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID?.trim();
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim();
-  const bucket = process.env.R2_BUCKET?.trim();
+  const accountId = process.env.R2_ACCOUNT_ID;
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+  const bucket = process.env.R2_BUCKET;
   if (!accountId || !accessKeyId || !secretAccessKey || !bucket) return null;
   return {
     accountId,
@@ -46,18 +39,12 @@ function cfg(): R2Config | null {
     secretAccessKey,
     bucket,
     host: `${accountId}.r2.cloudflarestorage.com`,
-    publicBase: process.env.R2_PUBLIC_BASE_URL?.trim().replace(/\/$/, ""),
+    publicBase: process.env.R2_PUBLIC_BASE_URL?.replace(/\/$/, ""),
   };
 }
 
 export function r2Configured(): boolean {
   return cfg() !== null;
-}
-
-/** Names of the required R2 env vars that are currently unset (for diagnostics). */
-export function missingR2Vars(): string[] {
-  return (["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"] as const)
-    .filter((k) => !process.env[k]);
 }
 
 const sha256hex = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");

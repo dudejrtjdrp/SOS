@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 import { getAuthContext } from "@/server/auth";
 import { ok, fail, type Result } from "@/lib/result";
 
@@ -13,6 +14,54 @@ export async function createWorkspace(input: { name: string }): Promise<Result<{
   const { data, error } = await ctx.supabase.rpc("create_workspace", { p_name: parsed.data.name });
   if (error) return fail("INTERNAL", error.message);
   return ok({ id: data as string });
+}
+
+/**
+ * Update a workspace's name and/or settings (plan, monthly token budget).
+ * RLS `workspaces_update = is_owner`, so only owners can change these. Only the
+ * fields actually provided are written, so partial updates are safe.
+ */
+export async function updateWorkspace(input: {
+  workspaceId: string;
+  name?: string;
+  plan?: "free" | "pro" | "team";
+  tokenBudgetMonthly?: number;
+}): Promise<Result> {
+  const parsed = z
+    .object({
+      workspaceId: z.string().uuid(),
+      name: z.string().min(1, "워크스페이스 이름을 입력하세요.").max(80).optional(),
+      plan: z.enum(["free", "pro", "team"]).optional(),
+      tokenBudgetMonthly: z.number().int().min(0).max(1_000_000_000).optional(),
+    })
+    .safeParse(input);
+  if (!parsed.success) {
+    return fail("VALIDATION", parsed.error.issues[0]?.message ?? "잘못된 요청입니다.");
+  }
+  const ctx = await getAuthContext();
+  if (!ctx) return fail("UNAUTHENTICATED", "로그인이 필요합니다.");
+
+  const patch: Record<string, unknown> = {};
+  if (parsed.data.name !== undefined) patch.name = parsed.data.name.trim();
+  if (parsed.data.plan !== undefined) patch.plan = parsed.data.plan;
+  if (parsed.data.tokenBudgetMonthly !== undefined)
+    patch.token_budget_monthly = parsed.data.tokenBudgetMonthly;
+  if (Object.keys(patch).length === 0) return ok(undefined);
+
+  // RLS gates owners only. Ask for the row back so a 0-row update (e.g. a
+  // non-owner blocked by RLS) surfaces as an error instead of a silent no-op.
+  const { data, error } = await ctx.supabase
+    .from("workspaces")
+    .update(patch)
+    .eq("id", parsed.data.workspaceId)
+    .select("id")
+    .maybeSingle();
+  if (error) return fail("FORBIDDEN", error.message);
+  if (!data) return fail("FORBIDDEN", "워크스페이스를 수정할 권한이 없습니다.");
+
+  revalidatePath("/home");
+  revalidatePath(`/w/${parsed.data.workspaceId}/team`);
+  return ok(undefined);
 }
 
 /**

@@ -4,9 +4,10 @@ import { ChevronLeftIcon } from "lucide-react";
 import { getAuthContext } from "@/server/auth";
 import { getWorkspace, getTeam } from "@/lib/queries";
 import { TeamManager } from "@/components/app/team-manager";
+import { WorkspaceSettings } from "@/components/app/workspace-settings";
 import { WorkspaceDanger } from "@/components/app/workspace-danger";
 
-export const metadata = { title: "팀" };
+export const metadata = { title: "설정" };
 
 export default async function TeamPage({
   params,
@@ -32,7 +33,20 @@ export default async function TeamPage({
       >
         <ChevronLeftIcon className="size-4" /> 홈
       </Link>
-      <h1 className="mb-6 text-2xl font-semibold tracking-tight">{ws.name} · 팀</h1>
+      <h1 className="mb-6 text-2xl font-semibold tracking-tight">{ws.name} · 설정</h1>
+
+      {isOwner && (
+        <div className="mb-10">
+          <WorkspaceSettings
+            workspaceId={workspace}
+            name={ws.name}
+            plan={(ws.plan as "free" | "pro" | "team") ?? "free"}
+            tokenBudgetMonthly={Number(ws.token_budget_monthly ?? 0)}
+          />
+        </div>
+      )}
+
+      <h2 className="mb-3 text-sm font-medium text-muted-foreground">팀</h2>
       <TeamManager workspaceId={workspace} members={team.members} invites={team.invites} />
 
       {isOwner && (

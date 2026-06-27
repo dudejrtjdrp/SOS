@@ -405,7 +405,7 @@ export async function getWorkspace(workspaceId: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("workspaces")
-    .select("id, name, plan")
+    .select("id, name, plan, token_budget_monthly")
     .eq("id", workspaceId)
     .maybeSingle();
   return data;

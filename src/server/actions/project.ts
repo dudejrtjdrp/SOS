@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 import { getAuthContext } from "@/server/auth";
 import { ok, fail, type Result } from "@/lib/result";
 
@@ -62,6 +63,50 @@ export async function renameProject(input: { projectId: string; name: string }):
     .update({ name: input.name })
     .eq("id", input.projectId);
   if (error) return fail("FORBIDDEN", error.message);
+  return ok(undefined);
+}
+
+/**
+ * Update a project's name and/or description. Only the provided fields are
+ * written. RLS `projects_write = is_member`, so any workspace member can edit.
+ */
+export async function updateProject(input: {
+  projectId: string;
+  name?: string;
+  description?: string;
+}): Promise<Result> {
+  const parsed = z
+    .object({
+      projectId: z.string().uuid(),
+      name: z.string().min(1, "프로젝트 이름을 입력하세요.").max(120).optional(),
+      description: z.string().max(2000).optional(),
+    })
+    .safeParse(input);
+  if (!parsed.success) {
+    return fail("VALIDATION", parsed.error.issues[0]?.message ?? "잘못된 요청입니다.");
+  }
+  const ctx = await getAuthContext();
+  if (!ctx) return fail("UNAUTHENTICATED", "로그인이 필요합니다.");
+
+  const patch: Record<string, unknown> = {};
+  if (parsed.data.name !== undefined) patch.name = parsed.data.name.trim();
+  if (parsed.data.description !== undefined) {
+    const d = parsed.data.description.trim();
+    patch.description = d.length ? d : null;
+  }
+  if (Object.keys(patch).length === 0) return ok(undefined);
+
+  const { data, error } = await ctx.supabase
+    .from("projects")
+    .update(patch)
+    .eq("id", parsed.data.projectId)
+    .select("id")
+    .maybeSingle();
+  if (error) return fail("FORBIDDEN", error.message);
+  if (!data) return fail("FORBIDDEN", "프로젝트를 수정할 권한이 없습니다.");
+
+  revalidatePath("/home");
+  revalidatePath(`/p/${parsed.data.projectId}`);
   return ok(undefined);
 }
 

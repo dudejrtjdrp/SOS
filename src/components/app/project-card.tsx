@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   MoreVerticalIcon,
+  PencilIcon,
   ArchiveIcon,
   Trash2Icon,
   RotateCcwIcon,
@@ -16,6 +17,7 @@ import {
   deleteProject,
   unarchiveProject,
 } from "@/server/actions/project";
+import { EditProjectDialog } from "@/components/app/project-settings";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -84,6 +86,7 @@ function DeleteProjectDialog({
 export function ProjectCard({ project }: { project: ProjectCardData }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [editOpen, setEditOpen] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
 
@@ -120,6 +123,15 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
             <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
             <div className="absolute right-0 z-20 mt-1 w-36 overflow-hidden rounded-md border border-border bg-popover py-1 shadow-md">
               <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  setEditOpen(true);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-secondary"
+              >
+                <PencilIcon className="size-3.5" /> 편집
+              </button>
+              <button
                 onClick={archive}
                 disabled={busy}
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-secondary disabled:opacity-50"
@@ -139,6 +151,13 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
           </>
         )}
       </div>
+
+      <EditProjectDialog
+        project={project}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSaved={() => router.refresh()}
+      />
 
       <DeleteProjectDialog
         project={project}

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChartColumnIcon, FileTextIcon, BookOpenIcon } from "lucide-react";
 import { getProject, getKnowledge, getProjectStats, getArtifacts } from "@/lib/queries";
 import { kbCompleteness } from "@/core/schemas/kb";
+import { ProjectEditButton } from "@/components/app/project-settings";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -23,7 +24,16 @@ export default async function ProjectOverview({
   return (
     <div className="mx-auto max-w-4xl px-6 py-8">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
+          <ProjectEditButton
+            project={{
+              id: project.id,
+              name: project.name,
+              description: project.description ?? null,
+            }}
+          />
+        </div>
         {project.description && (
           <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
         )}

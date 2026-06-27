@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LogOutIcon, UsersIcon } from "lucide-react";
+import { LogOutIcon, SettingsIcon } from "lucide-react";
 import { getAuthContext } from "@/server/auth";
 import { getWorkspacesWithProjects } from "@/lib/queries";
 import { signOut } from "@/app/(app)/actions";
@@ -57,7 +57,7 @@ export default async function HomePage() {
                   href={`/w/${ws.id}/team`}
                   className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                 >
-                  <UsersIcon className="size-3.5" />팀
+                  <SettingsIcon className="size-3.5" />설정
                 </Link>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
