@@ -28,10 +28,17 @@ interface R2Config {
 }
 
 function cfg(): R2Config | null {
-  const accountId = process.env.R2_ACCOUNT_ID;
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-  const bucket = process.env.R2_BUCKET;
+  // Tolerate a pasted scheme/endpoint in R2_ACCOUNT_ID (e.g. copying the full
+  // "https://<id>.r2.cloudflarestorage.com" S3 endpoint). Without this the host
+  // becomes "https://https://…" and fetch fails with ENOTFOUND "https".
+  const accountId = (process.env.R2_ACCOUNT_ID ?? "")
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/.*$/, "")
+    .replace(/\.r2\.cloudflarestorage\.com$/i, "");
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID?.trim();
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim();
+  const bucket = process.env.R2_BUCKET?.trim();
   if (!accountId || !accessKeyId || !secretAccessKey || !bucket) return null;
   return {
     accountId,
@@ -39,12 +46,18 @@ function cfg(): R2Config | null {
     secretAccessKey,
     bucket,
     host: `${accountId}.r2.cloudflarestorage.com`,
-    publicBase: process.env.R2_PUBLIC_BASE_URL?.replace(/\/$/, ""),
+    publicBase: process.env.R2_PUBLIC_BASE_URL?.trim().replace(/\/$/, ""),
   };
 }
 
 export function r2Configured(): boolean {
   return cfg() !== null;
+}
+
+/** Names of the required R2 env vars that are currently unset (for diagnostics). */
+export function missingR2Vars(): string[] {
+  return (["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"] as const)
+    .filter((k) => !process.env[k]);
 }
 
 const sha256hex = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
@@ -178,6 +191,20 @@ export function presignGetUrl(key: string, expiresSec = 3600): string | null {
     .digest("hex");
 
   return `https://${c.host}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+}
+
+/**
+ * Fetch an object server-side for the same-origin file proxy (used by the 공고문
+ * 한글 뷰어, which needs the raw bytes without a cross-origin request to R2).
+ * Returns the upstream response (body stream + headers) or null if R2 is
+ * unconfigured or the object is missing.
+ */
+export async function getObject(key: string): Promise<Response | null> {
+  const url = presignGetUrl(key);
+  if (!url) return null;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  return res;
 }
 
 /** Best-effort delete (used when a 공고문 attachment is removed). */

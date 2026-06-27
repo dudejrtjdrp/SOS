@@ -17,6 +17,7 @@ import {
   SearchIcon,
   PencilIcon,
   XIcon,
+  EyeIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,8 +29,12 @@ import {
   statusLabel,
   dDayLabel,
   dDay,
+  previewKind,
+  isPreviewable,
+  previewLabel,
   type NoticeStatus,
 } from "@/core/notices/meta";
+import { NoticeViewer } from "@/components/app/notice-viewer";
 import { cn } from "@/lib/utils";
 
 interface NoticeRow {
@@ -286,10 +291,17 @@ function NoticeCard({
   const [deadline, setDeadline] = React.useState(n.deadline ?? "");
   const [busy, setBusy] = React.useState(false);
   const [confirmDel, setConfirmDel] = React.useState(false);
+  const [viewerOpen, setViewerOpen] = React.useState(false);
 
   const dlabel = dDayLabel(n.deadline);
   const dleft = dDay(n.deadline);
   const urgent = dleft != null && dleft >= 0 && dleft <= 3 && n.status !== "submitted" && n.status !== "closed";
+
+  const pk = previewKind({ kind: n.kind, mimeType: n.mime_type, fileName: n.file_name });
+  const canPreview = isPreviewable(pk);
+  const typeLabel = previewLabel(pk);
+  const typeIcon =
+    n.kind === "link" ? <LinkIcon className="size-5" /> : n.kind === "image" ? <ImageIcon className="size-5" /> : <FileIcon className="size-5" />;
 
   async function patch(p: Parameters<typeof updateNotice>[0]) {
     setBusy(true);
@@ -329,18 +341,30 @@ function NoticeCard({
   return (
     <li className="rounded-xl border border-border bg-card p-4">
       <div className="flex gap-3">
-        {/* Thumbnail / icon */}
+        {/* Thumbnail / icon — click to preview when supported */}
         <div className="shrink-0">
-          {n.kind === "image" && n.fileUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={n.fileUrl}
-              alt={n.title}
-              className="size-14 rounded-lg border border-border object-cover"
-            />
+          {canPreview ? (
+            <button
+              type="button"
+              onClick={() => setViewerOpen(true)}
+              title="미리보기"
+              className="group relative block size-14 overflow-hidden rounded-lg border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {n.kind === "image" && n.fileUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={n.fileUrl} alt={n.title} className="size-full object-cover" />
+              ) : (
+                <span className="flex size-full items-center justify-center bg-muted/40 text-muted-foreground">
+                  {typeIcon}
+                </span>
+              )}
+              <span className="absolute inset-0 flex items-center justify-center opacity-0 transition group-hover:bg-black/40 group-hover:opacity-100">
+                <EyeIcon className="size-5 text-white" />
+              </span>
+            </button>
           ) : (
             <div className="flex size-14 items-center justify-center rounded-lg border border-border bg-muted/40 text-muted-foreground">
-              {n.kind === "link" ? <LinkIcon className="size-5" /> : n.kind === "image" ? <ImageIcon className="size-5" /> : <FileIcon className="size-5" />}
+              {typeIcon}
             </div>
           )}
         </div>
@@ -388,7 +412,19 @@ function NoticeCard({
                 <span className={cn("rounded border px-1.5 py-0.5", STATUS_TONE[n.status] ?? STATUS_TONE.open)}>
                   {statusLabel(n.status)}
                 </span>
-                {/* Open / download */}
+                {typeLabel && (
+                  <span className="rounded border border-border px-1.5 py-0.5 text-muted-foreground">{typeLabel}</span>
+                )}
+                {/* Preview / open / download */}
+                {canPreview && (
+                  <button
+                    type="button"
+                    onClick={() => setViewerOpen(true)}
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    <EyeIcon className="size-3.5" /> 미리보기
+                  </button>
+                )}
                 {n.kind === "link" && n.url && (
                   <a href={n.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
                     <ExternalLinkIcon className="size-3.5" /> 열기
@@ -443,6 +479,19 @@ function NoticeCard({
           </div>
         )}
       </div>
+
+      <NoticeViewer
+        open={viewerOpen}
+        onOpenChange={setViewerOpen}
+        target={{
+          title: n.title,
+          kind: n.kind,
+          fileName: n.file_name,
+          mimeType: n.mime_type,
+          fileUrl: n.fileUrl,
+          storageKey: n.storage_key,
+        }}
+      />
     </li>
   );
 }

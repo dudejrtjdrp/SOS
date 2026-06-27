@@ -41,3 +41,84 @@ export function dDayLabel(deadline: string | null | undefined, today: Date = new
   if (d === 0) return "D-DAY";
   return d > 0 ? `D-${d}` : `D+${-d}`;
 }
+
+// ── In-app preview classification ─────────────────────────────────
+/**
+ * How a 공고문 attachment can be previewed in the browser:
+ *   image  — <img> lightbox
+ *   pdf    — native <iframe> render
+ *   office — MS Office Online viewer embed (doc/docx/ppt/pptx/xls/xlsx)
+ *   hwp    — 한글 5.x binary, rendered in-app by hwp.js
+ *   hwpx   — 한글 XML/zip; no in-browser renderer → download only
+ *   none   — links / unknown types → open or download
+ */
+export type PreviewKind = "image" | "pdf" | "office" | "hwp" | "hwpx" | "none";
+
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif"]);
+const OFFICE_EXTS = new Set(["doc", "docx", "ppt", "pptx", "xls", "xlsx"]);
+
+/** Lowercased file extension without the dot, or "" if none. */
+export function fileExt(fileName: string | null | undefined): string {
+  if (!fileName) return "";
+  const clean = fileName.split(/[?#]/)[0];
+  const dot = clean.lastIndexOf(".");
+  return dot > -1 ? clean.slice(dot + 1).toLowerCase() : "";
+}
+
+/** Classify an attachment by kind + mime + filename. Pure / React-free. */
+export function previewKind(input: {
+  kind?: string | null;
+  mimeType?: string | null;
+  fileName?: string | null;
+}): PreviewKind {
+  if (input.kind === "link") return "none";
+  const mime = (input.mimeType ?? "").toLowerCase();
+  const e = fileExt(input.fileName);
+
+  if (input.kind === "image" || mime.startsWith("image/") || IMAGE_EXTS.has(e)) return "image";
+  if (mime === "application/pdf" || e === "pdf") return "pdf";
+  if (e === "hwpx") return "hwpx";
+  if (e === "hwp" || mime === "application/x-hwp" || mime === "application/haansofthwp" || mime === "application/vnd.hancom.hwp")
+    return "hwp";
+  if (
+    OFFICE_EXTS.has(e) ||
+    mime === "application/msword" ||
+    mime.includes("officedocument") ||
+    mime.includes("ms-word") ||
+    mime.includes("ms-powerpoint") ||
+    mime.includes("ms-excel")
+  )
+    return "office";
+  return "none";
+}
+
+/** Whether this kind has an in-app viewer (hwpx is download-only). */
+export function isPreviewable(k: PreviewKind): boolean {
+  return k === "image" || k === "pdf" || k === "office" || k === "hwp";
+}
+
+/** Short Korean badge label for a file type, or null when not worth showing. */
+export function previewLabel(k: PreviewKind): string | null {
+  switch (k) {
+    case "image":
+      return "이미지";
+    case "pdf":
+      return "PDF";
+    case "office":
+      return "독스";
+    case "hwp":
+    case "hwpx":
+      return "한글";
+    default:
+      return null;
+  }
+}
+
+/**
+ * Microsoft Office Online viewer embed URL. `fileUrl` must be reachable from the
+ * public internet (a presigned R2 GET URL works) since Microsoft fetches it
+ * server-side.
+ */
+export function officeEmbedUrl(fileUrl: string): string {
+  return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`;
+}
