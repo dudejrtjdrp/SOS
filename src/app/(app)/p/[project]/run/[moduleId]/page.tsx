@@ -7,10 +7,13 @@ import type { VerificationStatus } from "@/types/db";
 
 export default async function RunPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ project: string; moduleId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { project, moduleId } = await params;
+  const sp = await searchParams;
   const data = await getModuleForRun(moduleId);
   if (!data) notFound();
   const [kb, savedRows] = await Promise.all([
@@ -27,6 +30,17 @@ export default async function RunPage({
     pinned: !!a.pinned,
   }));
 
+  const variables = data.variables as Variable[];
+  // Prefill text inputs from query params — e.g. when opened from the 공고문
+  // ‘행사 정보’ panel, which passes 행사명·행사 주제·비고 in the URL.
+  const initialValues: Record<string, string> = {};
+  for (const v of variables) {
+    if (v.type !== "text" && v.type !== "textarea") continue;
+    const raw = sp[v.key];
+    const val = Array.isArray(raw) ? raw[0] : raw;
+    if (typeof val === "string" && val.trim()) initialValues[v.key] = val;
+  }
+
   return (
     <ModuleRunner
       projectId={project}
@@ -34,10 +48,11 @@ export default async function RunPage({
       moduleKey={(data.module as { key?: string | null }).key ?? null}
       moduleName={data.module.name}
       description={data.module.description}
-      variables={data.variables as Variable[]}
+      variables={variables}
       outputKind={data.outputKind}
       kb={kb}
       saved={saved}
+      initialValues={initialValues}
     />
   );
 }

@@ -38,6 +38,9 @@ export const FIELD_HELP: Record<string, string> = {
   problem: "고객이 겪는 핵심 문제 한 가지",
   solution: "그 문제를 푸는 우리만의 방식",
   topic: "탐색하고 싶은 주제나 문제 영역",
+  event_name: "참가할 공모전·해커톤·지원사업 이름. 예) 2026 예비창업패키지",
+  event_topic: "행사가 요구하는 주제·분야. 예) AI·데이터 기반 친환경",
+  note: "제출 요건·심사 기준·우대 분야 등 참고사항",
 };
 
 /** Help text for the shared output settings (appear on every tool). */
@@ -87,6 +90,14 @@ export const MODULE_GUIDE: Record<string, ModuleGuide> = {
     youGet: "반복되는 고통점을 빈도·심각도와 함께, 각 고통점의 기회까지",
     needs: ["타겟", "시장"],
     icon: "Frown",
+  },
+  event_idea: {
+    tagline: "행사에 맞춘 출품 아이디어",
+    whenToUse: "공모전·해커톤·지원사업에 무엇을 만들어 낼지 정할 때",
+    youGet: "행사 주제에 적합한 프로젝트·서비스 컨셉 5개와, 가장 유망한 출품작 선정",
+    needs: ["행사명", "행사 주제"],
+    tip: "공고문 페이지의 ‘행사 정보’에서 바로 채워 열면 행사명·주제가 자동 입력됩니다.",
+    icon: "Trophy",
   },
 
   // ── Research ──────────────────────────────────────────────────────

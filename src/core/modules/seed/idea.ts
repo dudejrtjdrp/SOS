@@ -90,4 +90,45 @@ export const ideaModules: SeedModule[] = [
       ),
     }),
   }),
+
+  idea("event_idea", "출품·참가 아이디어", "공모전·해커톤·지원사업 출품 아이디어", {
+    system: INNOVATOR,
+    instructions:
+      "주어진 행사(행사명·주제)와 우리 팀의 역량(서비스·타겟)을 결합해, 그 행사에 '무엇을 만들어 출품/참가할지' 프로젝트·서비스 컨셉 5개를 제시하라. 각 아이디어는 행사 주제와의 적합성과 우리만의 차별점을 분명히 하고, 진부한 발상은 피한다. 비고에 제출 요건·심사 기준·제약이 있으면 반드시 반영하고, 마지막에 가장 유망한 출품작 1개를 이유와 함께 선정하라.",
+    vars: [
+      inp("event_name", "행사명", {
+        type: "text",
+        desc: "참가하려는 공모전·해커톤·지원사업 이름.",
+        placeholder: "예) 2026 예비창업패키지",
+      }),
+      inp("event_topic", "행사 주제", {
+        type: "text",
+        desc: "행사가 요구하는 주제·분야. 아이디어의 방향을 잡습니다.",
+        placeholder: "예) AI·데이터 기반 친환경 솔루션",
+      }),
+      inp("note", "비고", {
+        desc: "제출 요건·심사 기준·우대 분야·제약 등 참고사항. (선택)",
+        placeholder: "예) 헬스케어 분야 우대, 5분 발표, MVP 데모 필수",
+      }),
+      kbv("service_description", "서비스 설명", {
+        desc: "우리 팀이 만들 수 있는 것의 출발점. (선택)",
+      }),
+      kbv("target", "타겟 고객", { desc: "아이디어가 향할 고객. (선택)" }),
+      ...common,
+    ],
+    output: out({
+      ideas: objs(
+        "출품 아이디어",
+        {
+          title: str("제목"),
+          concept: str("한 줄 컨셉"),
+          fit: str("행사 주제 적합성"),
+          differentiation: str("차별점"),
+          feasibility: str("실현 메모(범위·필요 역량)"),
+        },
+        4,
+      ),
+      top_pick: str("가장 유망한 출품작과 이유"),
+    }),
+  }),
 ];

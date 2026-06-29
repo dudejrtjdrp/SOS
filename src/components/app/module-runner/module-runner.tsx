@@ -49,6 +49,7 @@ export function ModuleRunner({
   outputKind,
   kb,
   saved = [],
+  initialValues,
 }: {
   projectId: string;
   moduleId: string;
@@ -59,18 +60,22 @@ export function ModuleRunner({
   outputKind: string;
   kb: Record<string, string>;
   saved?: SavedArtifact[];
+  /** Per-key prefill (e.g. from URL query params) — wins over KB/defaults. */
+  initialValues?: Record<string, string>;
 }) {
   const initial = React.useMemo(() => {
     const o: Record<string, unknown> = {};
     for (const v of variables) {
+      const override = initialValues?.[v.key];
       const fromKB = v.source?.startsWith("kb:") ? kb[v.source.slice(3)] : undefined;
       o[v.key] =
+        (override != null && override !== "" ? override : undefined) ??
         fromKB ??
         v.default ??
         (v.type === "multiselect" ? [] : v.type === "slider" ? v.min ?? 1 : "");
     }
     return o;
-  }, [variables, kb]);
+  }, [variables, kb, initialValues]);
 
   // ── run / stream ──
   const [inputs, setInputs] = React.useState<Record<string, unknown>>(initial);

@@ -18,11 +18,22 @@ import {
   PencilIcon,
   XIcon,
   EyeIcon,
+  CalendarRangeIcon,
+  SparklesIcon,
+  ArrowRightIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { createNotice, updateNotice, deleteNotice } from "@/server/actions/notice";
+import { upsertProjectEvent } from "@/server/actions/project-event";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useRealtimeRefresh } from "@/lib/realtime";
 import {
   NOTICE_STATUS,
@@ -63,12 +74,28 @@ const STATUS_TONE: Record<string, string> = {
   closed: "border-border bg-muted/40 text-muted-foreground",
 };
 
+interface IdeaTool {
+  key: string;
+  id: string;
+  name: string;
+}
+
+interface EventBrief {
+  event_name: string;
+  event_topic: string;
+  note: string;
+}
+
 export function NoticesView({
   projectId,
   notices,
+  event,
+  ideaTools,
 }: {
   projectId: string;
   notices: NoticeRow[];
+  event: EventBrief;
+  ideaTools: IdeaTool[];
 }) {
   const router = useRouter();
   const [mode, setMode] = React.useState<"none" | "link" | "upload">("none");
@@ -178,6 +205,7 @@ export function NoticesView({
           </p>
         </div>
         <div className="flex gap-2">
+          <EventBriefPanel projectId={projectId} initial={event} ideaTools={ideaTools} />
           <Button
             size="sm"
             variant={mode === "link" ? "secondary" : "outline"}
@@ -519,5 +547,166 @@ function StatusChip({
       {label}
       <span className={cn("text-[10px]", active ? "text-primary" : "text-muted-foreground")}>{count}</span>
     </button>
+  );
+}
+
+/**
+ * 행사 정보 — a single, project-level brief (행사명·행사 주제·비고) edited from the
+ * 공고문 page. Saving persists it; the idea tools listed below open pre-filled
+ * with these values (passed as URL query params the run page reads).
+ */
+function EventBriefPanel({
+  projectId,
+  initial,
+  ideaTools,
+}: {
+  projectId: string;
+  initial: EventBrief;
+  ideaTools: IdeaTool[];
+}) {
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
+  const [eventName, setEventName] = React.useState(initial.event_name);
+  const [eventTopic, setEventTopic] = React.useState(initial.event_topic);
+  const [note, setNote] = React.useState(initial.note);
+  const [busy, setBusy] = React.useState(false);
+
+  const hasBrief = !!(initial.event_name || initial.event_topic || initial.note);
+
+  async function persist(): Promise<boolean> {
+    const r = await upsertProjectEvent({ projectId, eventName, eventTopic, note });
+    if (!r.ok) {
+      toast.error(r.error.message ?? "저장에 실패했어요.");
+      return false;
+    }
+    return true;
+  }
+
+  async function onSave() {
+    setBusy(true);
+    try {
+      if (await persist()) {
+        toast.success("행사 정보를 저장했어요.");
+        router.refresh();
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function hrefFor(tool: IdeaTool): string {
+    const p = new URLSearchParams();
+    if (tool.key === "brainstorm") {
+      const topic = eventTopic.trim() || eventName.trim();
+      if (topic) p.set("topic", topic);
+    } else {
+      if (eventName.trim()) p.set("event_name", eventName.trim());
+      if (eventTopic.trim()) p.set("event_topic", eventTopic.trim());
+      if (note.trim()) p.set("note", note.trim());
+    }
+    const qs = p.toString();
+    return `/p/${projectId}/run/${tool.id}${qs ? `?${qs}` : ""}`;
+  }
+
+  async function openTool(tool: IdeaTool) {
+    const href = hrefFor(tool);
+    setBusy(true);
+    try {
+      // Best-effort persist so the brief is remembered next time; the URL still
+      // carries the values even if this fails.
+      await persist();
+    } finally {
+      setBusy(false);
+    }
+    router.push(href);
+  }
+
+  return (
+    <>
+      <Button
+        size="sm"
+        variant={hasBrief ? "secondary" : "outline"}
+        onClick={() => setOpen(true)}
+        title="공모전·해커톤·지원사업 행사 정보를 입력하고 아이디어 도구로 연결하세요"
+      >
+        <CalendarRangeIcon className="size-4" />
+        행사 정보
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>행사 정보</DialogTitle>
+            <DialogDescription>
+              참가할 공모전·해커톤·지원사업 정보를 한 번만 입력하면, 아래 아이디어 도구에 자동으로 채워집니다.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">행사명</label>
+              <Input
+                value={eventName}
+                onChange={(e) => setEventName(e.target.value)}
+                placeholder="예) 2026 예비창업패키지"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">행사 주제</label>
+              <Input
+                value={eventTopic}
+                onChange={(e) => setEventTopic(e.target.value)}
+                placeholder="예) AI·데이터 기반 친환경 솔루션"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">비고</label>
+              <Textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="제출 요건·심사 기준·우대 분야 등 참고사항"
+                className="min-h-[72px]"
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button size="sm" onClick={onSave} disabled={busy}>
+                {busy ? <Loader2Icon className="size-4 animate-spin" /> : null}
+                저장
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-1 border-t border-border pt-3">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <SparklesIcon className="size-3.5 text-primary" />
+              이 행사로 아이디어 받기
+            </p>
+            {ideaTools.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                아이디어 도구를 불러오지 못했어요. 시드(<code>npm run seed</code>)를 적용해 주세요.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {ideaTools.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => openTool(t)}
+                    className="group flex items-center justify-between rounded-lg border border-border px-3 py-2 text-left text-sm transition-colors hover:border-primary/50 hover:bg-accent disabled:opacity-60"
+                  >
+                    <span className="font-medium">{t.name}</span>
+                    <ArrowRightIcon className="size-4 text-muted-foreground transition-colors group-hover:text-primary" />
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+              도구로 이동하면 입력값이 채워진 채 열리고, 거기서 ‘프롬프트 복사’ 또는 ‘외부 AI 결과 붙여넣기’를 할 수 있어요.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

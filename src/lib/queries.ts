@@ -478,6 +478,29 @@ export async function getNotices(projectId: string) {
   }));
 }
 
+// ── 행사 정보 (project-level event brief) ─────────────────────────
+export interface ProjectEvent {
+  event_name: string;
+  event_topic: string;
+  note: string;
+}
+
+/** The single event brief for a project (행사명·행사 주제·비고). Always returns
+ *  an object — empty strings when no brief has been saved yet. */
+export async function getProjectEvent(projectId: string): Promise<ProjectEvent> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("project_events")
+    .select("event_name, event_topic, note")
+    .eq("project_id", projectId)
+    .maybeSingle();
+  return {
+    event_name: (data?.event_name as string) ?? "",
+    event_topic: (data?.event_topic as string) ?? "",
+    note: (data?.note as string) ?? "",
+  };
+}
+
 // ── Chat context ──────────────────────────────────────────────────
 export async function getKBForChat(projectId: string) {
   const supabase = await createClient();
