@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getProject, getKBFields } from "@/lib/queries";
-import { getCurrentUser } from "@/server/auth";
+import { getCurrentUser, getMyDisplayName } from "@/server/auth";
 import { ProjectSidebar } from "@/components/app/project-sidebar";
 import { KBQuickPanel } from "@/components/app/kb-quick-panel";
 
@@ -15,10 +15,11 @@ export default async function ProjectLayout({
   // Run all three concurrently — getProject no longer blocks the user/KB reads.
   // getKBFields takes the route param directly (same value as project.id), and
   // getCurrentUser is the request-cached auth read.
-  const [project, user, kbFields] = await Promise.all([
+  const [project, user, kbFields, displayName] = await Promise.all([
     getProject(projectId),
     getCurrentUser(),
     getKBFields(projectId),
+    getMyDisplayName(),
   ]);
   if (!project) redirect("/home");
 
@@ -28,6 +29,7 @@ export default async function ProjectLayout({
         projectId={project.id}
         projectName={project.name}
         userEmail={user?.email ?? ""}
+        userName={displayName}
       />
       <main className="flex-1 overflow-y-auto">{children}</main>
       <KBQuickPanel

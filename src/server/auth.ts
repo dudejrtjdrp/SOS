@@ -24,6 +24,23 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
   return user;
 });
 
+/**
+ * The signed-in user's display name from their profile row, or null if unset.
+ * Request-cached so the sidebars/header that all show it share one read. Falls
+ * back to null (callers show the email) when there's no name yet.
+ */
+export const getMyDisplayName = cache(async (): Promise<string | null> => {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("id", user.id)
+    .maybeSingle();
+  return data?.display_name ?? null;
+});
+
 /** Returns the authed context or null if not signed in. */
 export async function getAuthContext(): Promise<AuthContext | null> {
   const user = await getCurrentUser();

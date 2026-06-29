@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
+import { SidebarProfile } from "@/components/app/profile-button";
 import { signOut } from "@/app/(app)/actions";
 
 type NavItem = { label: string; icon: LucideIcon; href?: string; soon?: string };
@@ -51,7 +52,13 @@ const groups: { heading?: string; items: NavItem[] }[] = [
   },
 ];
 
-export function AppSidebar({ userEmail }: { userEmail: string }) {
+export function AppSidebar({
+  userEmail,
+  userName,
+}: {
+  userEmail: string;
+  userName: string | null;
+}) {
   const pathname = usePathname();
 
   return (
@@ -118,13 +125,8 @@ export function AppSidebar({ userEmail }: { userEmail: string }) {
       </nav>
 
       <div className="border-t border-border p-2">
-        <div className="flex items-center gap-2 px-2 py-1.5">
-          <div className="flex size-7 items-center justify-center rounded-full bg-secondary text-xs">
-            {userEmail.charAt(0).toUpperCase()}
-          </div>
-          <span className="truncate text-xs text-muted-foreground" title={userEmail}>
-            {userEmail}
-          </span>
+        <div className="flex items-center gap-2 px-1 py-1.5">
+          <SidebarProfile email={userEmail} name={userName} className="flex-1" />
           <ModeToggle />
         </div>
         <form action={signOut}>

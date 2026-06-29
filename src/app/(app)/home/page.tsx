@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { LogOutIcon, SettingsIcon } from "lucide-react";
-import { getAuthContext } from "@/server/auth";
+import { getAuthContext, getMyDisplayName } from "@/server/auth";
 import { getWorkspacesWithProjects } from "@/lib/queries";
 import { signOut } from "@/app/(app)/actions";
 import { CreateWorkspace, CreateProject } from "@/components/app/create";
@@ -8,12 +8,16 @@ import { ProjectCard, ArchivedProjectRow } from "@/components/app/project-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ModeToggle } from "@/components/mode-toggle";
+import { SidebarProfile } from "@/components/app/profile-button";
 
 export const metadata = { title: "홈" };
 
 export default async function HomePage() {
-  const ctx = await getAuthContext();
-  const workspaces = await getWorkspacesWithProjects();
+  const [ctx, workspaces, displayName] = await Promise.all([
+    getAuthContext(),
+    getWorkspacesWithProjects(),
+    getMyDisplayName(),
+  ]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -23,9 +27,13 @@ export default async function HomePage() {
         </div>
         <span className="font-semibold tracking-tight">SOS</span>
         <div className="ml-auto flex items-center gap-2">
-          <span className="hidden text-xs text-muted-foreground sm:inline">
-            {ctx?.user.email}
-          </span>
+          {ctx && (
+            <SidebarProfile
+              email={ctx.user.email ?? ""}
+              name={displayName}
+              className="hidden sm:flex"
+            />
+          )}
           <ModeToggle />
           <form action={signOut}>
             <Button variant="ghost" size="icon" aria-label="로그아웃">
