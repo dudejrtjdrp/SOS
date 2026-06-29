@@ -16,6 +16,7 @@
     "@ai-sdk/google": "^3.0.0",
     "@radix-ui/react-dialog": "^1.1.6",
     "@radix-ui/react-slot": "^1.1.2",
+    "@ssabrojs/hwpxjs": "^0.4.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.45.0",
     "ai": "^6.0.0",

@@ -518,7 +518,10 @@ function NoticeCard({
           mimeType: n.mime_type,
           fileUrl: n.fileUrl,
           storageKey: n.storage_key,
+          noticeId: n.id,
+          projectId,
         }}
+        onSaved={onChanged}
       />
     </li>
   );

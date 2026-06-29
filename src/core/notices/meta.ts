@@ -49,7 +49,7 @@ export function dDayLabel(deadline: string | null | undefined, today: Date = new
  *   pdf    — native <iframe> render
  *   office — MS Office Online viewer embed (doc/docx/ppt/pptx/xls/xlsx)
  *   hwp    — 한글 5.x binary, rendered in-app by hwp.js
- *   hwpx   — 한글 XML/zip; no in-browser renderer → download only
+ *   hwpx   — 한글 신형(OWPML zip), rendered in-app by @ssabrojs/hwpxjs
  *   none   — links / unknown types → open or download
  */
 export type PreviewKind = "image" | "pdf" | "office" | "hwp" | "hwpx" | "none";

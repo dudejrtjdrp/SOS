@@ -152,3 +152,70 @@ export async function deleteNotice(input: {
   revalidatePath(`/p/${parsed.data.projectId}/notices`);
   return ok(undefined);
 }
+
+/**
+ * Replace a 공고문 file attachment with an edited version (e.g. a .hwpx exported
+ * from the in-app 한글 editor). Updates the storage pointer + metadata and best-
+ * effort deletes the previous object. The old key is read from the row (not the
+ * client) so a caller can't be tricked into deleting an arbitrary object.
+ */
+export async function replaceNoticeFile(input: {
+  noticeId: string;
+  projectId: string;
+  storageKey: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  /** Accepted for client convenience but ignored — the old key comes from the DB. */
+  oldStorageKey?: string | null;
+}): Promise<Result> {
+  const parsed = z
+    .object({
+      noticeId: z.string().uuid(),
+      projectId: z.string().uuid(),
+      storageKey: z.string().min(1, "저장 키가 필요합니다."),
+      fileName: z.string().nullable().optional(),
+      mimeType: z.string().nullable().optional(),
+      sizeBytes: z.number().int().nonnegative().nullable().optional(),
+      oldStorageKey: z.string().nullable().optional(),
+    })
+    .safeParse(input);
+  if (!parsed.success) return fail("VALIDATION", parsed.error.issues[0]?.message ?? "입력을 확인하세요.");
+
+  const ctx = await getAuthContext();
+  if (!ctx) return fail("UNAUTHENTICATED", "로그인이 필요합니다.");
+
+  const d = parsed.data;
+  const workspaceId = await workspaceOfProject(ctx.supabase, d.projectId);
+  if (!workspaceId) return fail("NOT_FOUND", "프로젝트를 찾을 수 없습니다.");
+
+  // Read the current object key (and confirm the notice belongs to this project).
+  const { data: cur, error: readErr } = await ctx.supabase
+    .from("notices")
+    .select("storage_key")
+    .eq("id", d.noticeId)
+    .eq("project_id", d.projectId)
+    .single();
+  if (readErr || !cur) return fail("NOT_FOUND", "공고문을 찾을 수 없습니다.");
+
+  const { error } = await ctx.supabase
+    .from("notices")
+    .update({
+      kind: "file",
+      storage_key: d.storageKey,
+      file_name: d.fileName ?? null,
+      mime_type: d.mimeType ?? null,
+      size_bytes: d.sizeBytes ?? null,
+      updated_by: ctx.user.id,
+    })
+    .eq("id", d.noticeId)
+    .eq("project_id", d.projectId);
+  if (error) return fail("INTERNAL", error.message);
+
+  // Best-effort cleanup of the replaced object (ignored if unconfigured / gone).
+  const prevKey = (cur as { storage_key: string | null }).storage_key;
+  if (prevKey && prevKey !== d.storageKey) await deleteObject(prevKey);
+
+  revalidatePath(`/p/${d.projectId}/notices`);
+  return ok(undefined);
+}
