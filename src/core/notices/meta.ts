@@ -92,9 +92,9 @@ export function previewKind(input: {
   return "none";
 }
 
-/** Whether this kind has an in-app viewer (hwpx is download-only). */
+/** Whether this kind has an in-app viewer (everything except links/unknown). */
 export function isPreviewable(k: PreviewKind): boolean {
-  return k === "image" || k === "pdf" || k === "office" || k === "hwp";
+  return k !== "none";
 }
 
 /** Short Korean badge label for a file type, or null when not worth showing. */

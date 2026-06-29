@@ -126,14 +126,8 @@ function ViewerBody({ pk, target }: { pk: PreviewKind; target: NoticeViewerTarge
     return <HwpViewer storageKey={storageKey} fileUrl={fileUrl} fileName={fileName} />;
   }
 
-  if (pk === "hwpx") {
-    return (
-      <Fallback
-        fileName={fileName}
-        fileUrl={fileUrl}
-        message="신형 한글 문서(.hwpx)는 브라우저 미리보기를 지원하지 않아요. 다운로드해서 확인해 주세요."
-      />
-    );
+  if (pk === "hwpx" && storageKey) {
+    return <HwpxViewer storageKey={storageKey} fileUrl={fileUrl} fileName={fileName} />;
   }
 
   return (
@@ -214,6 +208,80 @@ function HwpViewer({
           <Loader2Icon className="size-4 animate-spin" />
           한글 문서를 불러오는 중…
         </div>
+      )}
+    </div>
+  );
+}
+
+const HWPX_CSS = `
+.hwpx-doc { color: #171717; font-size: 13px; line-height: 1.7; word-break: break-word; }
+.hwpx-doc p { margin: 0 0 0.5em; }
+.hwpx-doc table.hwpx-tbl { border-collapse: collapse; margin: 0.6em 0; width: 100%; }
+.hwpx-doc .hwpx-tbl td { border: 1px solid #d4d4d4; padding: 4px 8px; vertical-align: top; }
+.hwpx-doc .hwpx-pre { white-space: pre-wrap; font-family: inherit; margin: 0; }
+.hwpx-doc .hwpx-img, .hwpx-doc .hwpx-prv { max-width: 100%; height: auto; margin: 0.4em 0; }
+`;
+
+/** In-app 한글 신형(.hwpx) renderer: unzip + OWPML → HTML (lazy-loaded). */
+function HwpxViewer({
+  storageKey,
+  fileUrl,
+  fileName,
+}: {
+  storageKey: string;
+  fileUrl: string | null;
+  fileName: string | null;
+}) {
+  const [state, setState] = React.useState<"loading" | "ready" | "error">("loading");
+  const [html, setHtml] = React.useState("");
+  const [message, setMessage] = React.useState("");
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setState("loading");
+      try {
+        const res = await fetch(`/api/uploads?key=${encodeURIComponent(storageKey)}`);
+        if (!res.ok) throw new Error("파일을 불러오지 못했어요.");
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (cancelled) return;
+        const { parseHwpx } = await import("@/lib/hwpx");
+        const out = parseHwpx(bytes);
+        if (cancelled) return;
+        setHtml(out);
+        setState("ready");
+      } catch (e) {
+        if (cancelled) return;
+        console.error("[notice .hwpx viewer]", e);
+        setMessage(
+          e instanceof Error && e.message ? e.message : "한글 문서를 여는 중 문제가 발생했어요.",
+        );
+        setState("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [storageKey]);
+
+  if (state === "error") {
+    return <Fallback fileName={fileName} fileUrl={fileUrl} message={message} />;
+  }
+
+  return (
+    <div className="relative min-h-0 flex-1 overflow-auto bg-white">
+      <style>{HWPX_CSS}</style>
+      {state === "loading" ? (
+        <div className="absolute inset-0 flex items-center justify-center gap-2 bg-white/70 text-sm text-muted-foreground">
+          <Loader2Icon className="size-4 animate-spin" />
+          한글 문서를 불러오는 중…
+        </div>
+      ) : (
+        <div
+          className="mx-auto max-w-3xl px-8 py-6"
+          // Content is HTML-escaped in parseHwpx; only our own tags + data: URLs are emitted.
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
       )}
     </div>
   );
