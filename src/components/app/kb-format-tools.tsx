@@ -114,7 +114,7 @@ export function KBFormatTools({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="flex max-h-[calc(100vh-2rem)] max-w-2xl flex-col overflow-hidden sm:max-h-[calc(100vh-4rem)]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <SparklesIcon className="size-4 text-primary" />
@@ -126,55 +126,57 @@ export function KBFormatTools({
             </DialogDescription>
           </DialogHeader>
 
-          <Textarea
-            autoFocus
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={
-              "여기에 결과를 붙여넣으세요…\n\n## 프로젝트명\n리뷰메이트\n\n## 서비스 설명\n네이버·배달앱 리뷰를 한곳에 모아…"
-            }
-            className="min-h-[240px] font-mono text-xs leading-relaxed"
-          />
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+            <Textarea
+              autoFocus
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={
+                "여기에 결과를 붙여넣으세요…\n\n## 프로젝트명\n리뷰메이트\n\n## 서비스 설명\n네이버·배달앱 리뷰를 한곳에 모아…"
+              }
+              className="min-h-[240px] max-h-[40vh] resize-none overflow-y-auto font-mono text-xs leading-relaxed"
+            />
 
-          {text.trim() && (
-            <div className="rounded-md border border-border bg-muted/40 p-3">
-              {parsedKeys.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  인식된 항목이 없습니다. 제목 줄(예{": "}
-                  <code className="rounded bg-secondary px-1 py-0.5">## 프로젝트명</code>)이
-                  형식과 같은지 확인하세요.
-                </p>
-              ) : (
-                <>
-                  <p className="mb-2 text-xs font-medium text-muted-foreground">
-                    인식된 항목 {parsedKeys.length}개
+            {text.trim() && (
+              <div className="rounded-md border border-border bg-muted/40 p-3">
+                {parsedKeys.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    인식된 항목이 없습니다. 제목 줄(예{": "}
+                    <code className="rounded bg-secondary px-1 py-0.5">## 프로젝트명</code>)이
+                    형식과 같은지 확인하세요.
                   </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {parsedKeys.map((k) => {
-                      const overwrite = (current[k] ?? "").trim().length > 0;
-                      return (
-                        <span
-                          key={k}
-                          className={cn(
-                            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]",
-                            "border-border bg-background text-foreground/80",
-                          )}
-                        >
-                          <CheckIcon className="size-3 text-success" />
-                          {LABEL_BY_KEY[k] ?? k}
-                          {overwrite && (
-                            <span className="text-muted-foreground/70">· 덮어씀</span>
-                          )}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+                ) : (
+                  <>
+                    <p className="mb-2 text-xs font-medium text-muted-foreground">
+                      인식된 항목 {parsedKeys.length}개
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {parsedKeys.map((k) => {
+                        const overwrite = (current[k] ?? "").trim().length > 0;
+                        return (
+                          <span
+                            key={k}
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]",
+                              "border-border bg-background text-foreground/80",
+                            )}
+                          >
+                            <CheckIcon className="size-3 text-success" />
+                            {LABEL_BY_KEY[k] ?? k}
+                            {overwrite && (
+                              <span className="text-muted-foreground/70">· 덮어씀</span>
+                            )}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="ghost" onClick={() => setOpen(false)}>
               취소
             </Button>
